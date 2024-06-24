@@ -22,22 +22,20 @@ def generate_launch_description():
                 'sensor_types': ['RGB'],
                 'rgbd_color_topics': [
                     '/camera/color/image_rect_raw',
-                    '/camera1/color/image_rect_raw',
-                    '/camera2/color/image_rect_raw',
                 ],
                 'rgbd_depth_topics': [
                     '/camera/depth/image_rect_raw',
-                    '/camera1/depth/image_rect_raw',
-                    '/camera2/depth/image_rect_raw',
                 ],
                 'rgbd_info_topics': [
                     '/camera/color/camera_info',
-                    '/camera1/color/camera_info',
-                    '/camera2/color/camera_info',
                 ],
                 'use_sim_time': True,
-                'inspection_space_min': [-2.5, -2.0, -2.0],
-                'inspection_space_max': [-1.5, 2.0, 2.0],
+                'inspection_space_3d_min': [-2.5, -2.0, -2.0],
+                'inspection_space_3d_max': [-1.5, 2.0, 2.0],
+                'inspection_space_6d_min': [-100.0, -100.0, -100.0, -20.0, -20.0, -20.0],
+                'inspection_space_6d_max': [100.0, 100.0, 100.0, 20, 20, 20],
+                'save_path': '/tmp/demo_dense.vinspect',
+                'dense_senor_resolution': [848.0, 480.0],
             }
         ],
     )
@@ -49,12 +47,28 @@ def generate_launch_description():
         output='screen',
         emulate_tty=True,
         arguments=['-d' + os.path.join(get_package_share_directory(
-            'vinspect_ros2'), 'config', 'demo.rviz')],
+            'vinspect_ros2'), 'config', 'dense_demo.rviz')],
+    )
+
+    pose_marker_node = launch_ros.actions.Node(
+        package='vinspect_ros2',
+        executable='pose_marker.py',
+        name='pose_marker',
+        output='screen',
+    )
+
+    static_frame_node = launch_ros.actions.Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="static_tf2_broadcaster",
+        arguments=['--frame-id', '/world', '--child-frame-id', '/base_link'],
     )
 
     return launch.LaunchDescription(
         [
             vinspect_node,
             rviz,
+            pose_marker_node,
+            static_frame_node,
         ]
     )
