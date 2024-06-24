@@ -643,7 +643,7 @@ private:
       mtx_.unlock();
       RCLCPP_INFO(this->get_logger(), "No dense data available");
     } else {
-      RCLCPP_INFO(this->get_logger(), "Asking inspection.cpp for images");
+      RCLCPP_INFO(this->get_logger(), "Asking vinspect for images");
       int id_to_get = inspection_.getClosestDenseMeasurement(dense_interactive_marker_pose_);
       auto image = inspection_.getImageFromId(id_to_get);
       auto pose = inspection_.getDensePoseFromId(id_to_get);
