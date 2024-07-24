@@ -10,6 +10,7 @@ find_package(vinspect REQUIRED)
 find_package(TBB REQUIRED)
 
 set(ROS2_DEPS
+  ament_index_cpp
   cv_bridge
   message_filters
   rclcpp
