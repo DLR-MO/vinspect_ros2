@@ -19,16 +19,18 @@ from transforms3d.affines import compose
 from transforms3d.quaternions import quat2mat
 
 
-IMAGE_TOPICS = ['/camera/camera/color/image_rect_raw']
-DEPTH_TOPICS = ['/camera/camera/depth/image_rect_raw']
-CAMERA_TOPICS = ['/camera/camera/color/camera_info']
+IMAGE_TOPICS = ['/camera/camera/color/image_rect_raw']#, '/camera2/camera2/color/image_rect_raw']
+DEPTH_TOPICS = ['/camera/camera/depth/image_rect_raw']#, '/camera2/camera2/depth/image_rect_raw']
+CAMERA_TOPICS = ['/camera/camera/color/camera_info']#, '/camera2/camera2/color/camera_info']
 TF_TOPIC = '/tf'
 TF_STATIC_TOPIC = '/tf_static'
 ALL_TOPICS = IMAGE_TOPICS + DEPTH_TOPICS + CAMERA_TOPICS + [TF_TOPIC] + [TF_STATIC_TOPIC]
 
 DEPTH_SCALE = 1000.0
-DEPTH_TRUNC = 0.5 #m
-WORLD_LINK = 'base_link'
+DEPTH_TRUNC = 0.50 #m
+WORLD_LINK = 'world'
+VOXEL_LENGTH = 0.005 #m
+SDF_TRUNC = 0.50 #m
 
 def deserialize_to_msg(desirialized_msg):
     # the rosbag library does not provide the real message object, so we need to create it manually
@@ -48,6 +50,7 @@ def deserialize_to_msg(desirialized_msg):
 def process_bag(bag_path):
     # Create a VInspect object
     inspection = Inspection(["RGBD"], inspection_space_min=[-1.0,-1.0,-1.0], inspection_space_max=[1.0,1.0,1.0])
+    inspection.reinitialize_TSDF(VOXEL_LENGTH, SDF_TRUNC)
     read_message = 0
     num_cameras = len(IMAGE_TOPICS)
     if len(IMAGE_TOPICS) != len(DEPTH_TOPICS):
@@ -105,7 +108,7 @@ def process_bag(bag_path):
             
             # First read all tf and tf_static messages into the buffer
             # Create tf2 buffer with a buffer length of the whole rosbag
-            length_ns = reader.duration            
+            length_ns = reader.duration
             buffer = Buffer(Duration(seconds=length_ns/1e9, nanoseconds=length_ns%1e9))
             # Fill with data
             print('Reading static TF messages')
@@ -145,7 +148,7 @@ def process_bag(bag_path):
                 #o3d.visualization.draw_geometries([rgbd_image])
                 # get corresponding pose from tf2
                 try:
-                    trans = buffer.lookup_transform(WORLD_LINK, msg.header.frame_id, Time(seconds=msg.header.stamp.sec, nanoseconds=msg.header.stamp.nanosec))
+                    trans = buffer.lookup_transform(msg.header.frame_id, WORLD_LINK, Time(seconds=msg.header.stamp.sec, nanoseconds=msg.header.stamp.nanosec))
                 except Exception as e:
                     print(e)
                     print('Ignored image that could not be transformed')                    
@@ -171,22 +174,17 @@ def process_bag(bag_path):
                 if connection.topic in IMAGE_TOPICS:
                     for depth_image in open_depth_images[id]:
                         if depth_image.header.stamp.sec == msg.header.stamp.sec and depth_image.header.stamp.nanosec == msg.header.stamp.nanosec:
-                            if read_message > 200:
-                                #TODO this is jsut for testing
-                                pass
-                                integrate(msg, depth_image, id)
+                            integrate(msg, depth_image, id)
                             integrated = True
-                            #break
+                            break
                     if not integrated:
                         open_color_images[id].append(msg)
                 else:
                     for color_image in open_color_images[id]:
-                        if color_image.header.stamp.sec == msg.header.stamp.sec and color_image.header.stamp.nanosec == msg.header.stamp.nanosec:
-                            if read_message > 200:
-                                #TODO this is jsut for testing                                
-                                integrate(color_image, msg, id)
+                        if color_image.header.stamp.sec == msg.header.stamp.sec and color_image.header.stamp.nanosec == msg.header.stamp.nanosec:                                                            
+                            integrate(color_image, msg, id)
                             integrated = True
-                            #break
+                            break
                     if not integrated:
                         open_depth_images[id].append(msg)
 
@@ -194,13 +192,18 @@ def process_bag(bag_path):
                 read_message+=1
                 if (read_message) % 100 == 0:
                     print(f"\rProcessing... {(read_message) / all_image_count * 100:.2f}% done", end='')
+                    #o3d.visualization.draw_geometries([inspection.extract_dense_reconstruction()])
             print(f"\rProcessing... 100.00% done")
             print(f'The following count of images were not matchable\n  color: {len(open_color_images)}\n  depth: {len(open_depth_images)}')
     except UnicodeDecodeError:
         print('Error decoding bag file. Are you sure that you provided the path to the folder and not to the mcap file?')
     # Provide statistics to the user when finished reading the bag
     print("Statistics:")
-    #print(f"Processed images: {len(inspection.images)}")
+    print(f"Processed images: {read_message}")
+    print(f'Integrated images {inspection.get_integrated_images_count()}')
+    mesh = inspection.extract_dense_reconstruction()
+    print(mesh)
+    o3d.visualization.draw_geometries([mesh])
     #print(f"Mean processing time per image: {inspection.mean_process_time:.4f} s")
     #print(f"Total processing time: {inspection.total_process_time:.4f} s")
 
