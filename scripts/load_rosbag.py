@@ -15,6 +15,9 @@ from pprint import pprint
 import open3d as o3d
 from rclpy.time import Time
 import numpy as np
+from transforms3d.affines import compose
+from transforms3d.quaternions import quat2mat
+
 
 IMAGE_TOPICS = ['/camera/camera/color/image_rect_raw']
 DEPTH_TOPICS = ['/camera/camera/depth/image_rect_raw']
@@ -22,6 +25,10 @@ CAMERA_TOPICS = ['/camera/camera/color/camera_info']
 TF_TOPIC = '/tf'
 TF_STATIC_TOPIC = '/tf_static'
 ALL_TOPICS = IMAGE_TOPICS + DEPTH_TOPICS + CAMERA_TOPICS + [TF_TOPIC] + [TF_STATIC_TOPIC]
+
+DEPTH_SCALE = 1000.0
+DEPTH_TRUNC = 0.5 #m
+WORLD_LINK = 'base_link'
 
 def deserialize_to_msg(desirialized_msg):
     # the rosbag library does not provide the real message object, so we need to create it manually
@@ -75,7 +82,9 @@ def process_bag(bag_path):
                 topic_message_numbers[topic_data['topic_metadata']['name']] = topic_data['message_count']
             print(f'Using bag with messages from {reader.start_time/1e9} to {reader.end_time/1e9} with a duration of {(reader.end_time-reader.start_time)/1e9} s')
             pprint(topic_message_numbers)
-            
+            all_image_count = 0
+            for topic in IMAGE_TOPICS + DEPTH_TOPICS:
+                all_image_count += topic_message_numbers[topic]
 
             # Sanity check
             for camera_topic in CAMERA_TOPICS:
@@ -112,31 +121,41 @@ def process_bag(bag_path):
             read_message = 0
             print('\nReading dynamic TF messages')
             connections = [x for x in reader.connections if x.topic == TF_TOPIC]
-            for connection, timestamp, rawdata in reader.messages(connections=connections):
-                break
+            for connection, timestamp, rawdata in reader.messages(connections=connections):                
                 msg = typestore.deserialize_cdr(rawdata, connection.msgtype)
                 # each message can contain multiple transforms                
                 for deserizled_transform in msg.transforms:                    
                     buffer.set_transform(deserialize_to_msg(deserizled_transform), 'rosbag_reader')
                 read_message+=1
                 if (read_message) % 100 == 0:
-                    print(f"\rProcessing... {read_message/ topic_message_numbers[TF_TOPIC] * 100:.2f}% done", end='')        
+                    print(f"\rProcessing... {read_message/ topic_message_numbers[TF_TOPIC] * 100:.2f}% done", end='')
+            print(f"\rProcessing... 100.00% done")
 
-            def integrate(des_color, des_depth):                
-                print(des_depth)
-                color_cv_mat = des_color.data.reshape(des_color.height, des_color.width, 3, 1).astype(np.uint8)
-                color_cv2_img = cv2.cvtColor(color_cv_mat, cv2.COLOR_RGB2BGR)
-                color_img = o3d.geometry.Image(color_cv2_img)
-                depth_array = np.fromstring(des_depth.data, dtype=np.uint16)
-                #depth_cv_mat = depth_array.reshape(des_depth.height, des_depth.width).astype(np.float32)
-                reshaped_array = depth_array.reshape(des_depth.height, des_depth.width).astype(np.uint16)
-                #depth_cv2_img = cv2.cvtColor(depth_cv_mat, cv2.16UC1)
-                #print(reshaped_array)
-                depth_img = o3d.geometry.Image(reshaped_array)
-                o3d.visualization.draw_geometries([color_img])
-                o3d.visualization.draw_geometries([depth_img])
-                #rgbd_image = geometry.RGBDImage.CreateFromColorAndDepth()
-                #inspection.integrate_image()
+            def integrate(des_color, des_depth, id):
+                color_array = np.frombuffer(des_color.data, dtype=np.uint8)
+                color_reshaped_array = color_array.reshape(des_color.height, des_color.width, 3).astype(np.uint8)
+                #color_img = o3d.cpu.pybind.geometry.Image(color_reshaped_array)
+
+                depth_array = np.frombuffer(des_depth.data, dtype=np.uint16)                
+                reshaped_array = depth_array.reshape(des_depth.height, des_depth.width).astype(np.uint16)                
+                #depth_img = o3d.cpu.pybind.geometry.Image(reshaped_array)
+                #o3d.visualization.draw_geometries([color_img])
+                #o3d.visualization.draw_geometries([depth_img])
+                rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(o3d.cpu.pybind.geometry.Image(color_reshaped_array), o3d.cpu.pybind.geometry.Image(reshaped_array), depth_scale=DEPTH_SCALE, depth_trunc=DEPTH_TRUNC, convert_rgb_to_intensity=False)
+                #o3d.visualization.draw_geometries([rgbd_image])
+                # get corresponding pose from tf2
+                try:
+                    trans = buffer.lookup_transform(WORLD_LINK, msg.header.frame_id, Time(seconds=msg.header.stamp.sec, nanoseconds=msg.header.stamp.nanosec))
+                except Exception as e:
+                    print(e)
+                    print('Ignored image that could not be transformed')                    
+                    return                
+                #pprint(trans)
+                t = trans.transform
+                affine_matrix = compose(np.array([t.translation.x, t.translation.y, t.translation.z]), quat2mat(np.array([t.rotation.w, t.rotation.x, t.rotation.y, t.rotation.z])), np.array([1.0, 1.0, 1.0]))
+                #pprint(affine_matrix)
+                #print('-----------')
+                inspection.integrate_image(rgbd_image, id, affine_matrix)
 
             # now we can go through the images and integrate them
             # we need to always find the matching pair of color and depth image
@@ -152,10 +171,10 @@ def process_bag(bag_path):
                 if connection.topic in IMAGE_TOPICS:
                     for depth_image in open_depth_images[id]:
                         if depth_image.header.stamp.sec == msg.header.stamp.sec and depth_image.header.stamp.nanosec == msg.header.stamp.nanosec:
-                            if read_message > 100:
+                            if read_message > 200:
                                 #TODO this is jsut for testing
                                 pass
-                                integrate(msg, depth_image)
+                                integrate(msg, depth_image, id)
                             integrated = True
                             #break
                     if not integrated:
@@ -163,10 +182,9 @@ def process_bag(bag_path):
                 else:
                     for color_image in open_color_images[id]:
                         if color_image.header.stamp.sec == msg.header.stamp.sec and color_image.header.stamp.nanosec == msg.header.stamp.nanosec:
-                            if read_message > 100:
-                                #TODO this is jsut for testing
-                                pass
-                                integrate(color_image, msg)
+                            if read_message > 200:
+                                #TODO this is jsut for testing                                
+                                integrate(color_image, msg, id)
                             integrated = True
                             #break
                     if not integrated:
@@ -175,7 +193,9 @@ def process_bag(bag_path):
                 # Print progress feedback for the user
                 read_message+=1
                 if (read_message) % 100 == 0:
-                    print(f"\rProcessing... {(read_message) / reader.message_count * 100:.2f}% done", end='')
+                    print(f"\rProcessing... {(read_message) / all_image_count * 100:.2f}% done", end='')
+            print(f"\rProcessing... 100.00% done")
+            print(f'The following count of images were not matchable\n  color: {len(open_color_images)}\n  depth: {len(open_depth_images)}')
     except UnicodeDecodeError:
         print('Error decoding bag file. Are you sure that you provided the path to the folder and not to the mcap file?')
     # Provide statistics to the user when finished reading the bag
