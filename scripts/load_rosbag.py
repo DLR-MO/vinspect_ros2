@@ -19,9 +19,9 @@ from transforms3d.affines import compose
 from transforms3d.quaternions import quat2mat
 
 
-IMAGE_TOPICS = ['/camera/camera/color/image_rect_raw']#, '/camera2/camera2/color/image_rect_raw']
-DEPTH_TOPICS = ['/camera/camera/depth/image_rect_raw']#, '/camera2/camera2/depth/image_rect_raw']
-CAMERA_TOPICS = ['/camera/camera/color/camera_info']#, '/camera2/camera2/color/camera_info']
+IMAGE_TOPICS = ['/camera/camera/color/image_rect_raw', '/camera2/camera2/color/image_rect_raw']
+DEPTH_TOPICS = ['/camera/camera/depth/image_rect_raw', '/camera2/camera2/depth/image_rect_raw']
+CAMERA_TOPICS = ['/camera/camera/color/camera_info', '/camera2/camera2/color/camera_info']
 TF_TOPIC = '/tf'
 TF_STATIC_TOPIC = '/tf_static'
 ALL_TOPICS = IMAGE_TOPICS + DEPTH_TOPICS + CAMERA_TOPICS + [TF_TOPIC] + [TF_STATIC_TOPIC]
@@ -29,8 +29,11 @@ ALL_TOPICS = IMAGE_TOPICS + DEPTH_TOPICS + CAMERA_TOPICS + [TF_TOPIC] + [TF_STAT
 DEPTH_SCALE = 1000.0
 DEPTH_TRUNC = 0.50 #m
 WORLD_LINK = 'world'
-VOXEL_LENGTH = 0.005 #m
+VOXEL_LENGTH = 0.005#m
 SDF_TRUNC = 0.50 #m
+INSPECTION_SPACE_MIN=[-1.0,-1.0,-1.0]#[-0.85,0.5,0.0]#m
+INSPECTION_SPACE_MAX=[1.0,1.0,1.0]#[-0.25,1.0,0.3]#m
+TIME_OFFSET = 0.0#0.99*1e9 #ns
 
 def deserialize_to_msg(desirialized_msg):
     # the rosbag library does not provide the real message object, so we need to create it manually
@@ -49,7 +52,7 @@ def deserialize_to_msg(desirialized_msg):
 
 def process_bag(bag_path):
     # Create a VInspect object
-    inspection = Inspection(["RGBD"], inspection_space_min=[-1.0,-1.0,-1.0], inspection_space_max=[1.0,1.0,1.0])
+    inspection = Inspection(["RGBD"], inspection_space_min=INSPECTION_SPACE_MIN, inspection_space_max=INSPECTION_SPACE_MAX)
     inspection.reinitialize_TSDF(VOXEL_LENGTH, SDF_TRUNC)
     read_message = 0
     num_cameras = len(IMAGE_TOPICS)
@@ -91,7 +94,7 @@ def process_bag(bag_path):
 
             # Sanity check
             for camera_topic in CAMERA_TOPICS:
-                if topic_message_numbers[camera_topic] != 1:
+                if topic_message_numbers[camera_topic] == 0:
                     print(f'Did not find camera info messages for all cameras! Problem with camera_info topic {camera_topic}')
                 print('Currently ignored!!!!!!')
 
@@ -148,7 +151,7 @@ def process_bag(bag_path):
                 #o3d.visualization.draw_geometries([rgbd_image])
                 # get corresponding pose from tf2
                 try:
-                    trans = buffer.lookup_transform(msg.header.frame_id, WORLD_LINK, Time(seconds=msg.header.stamp.sec, nanoseconds=msg.header.stamp.nanosec))
+                    trans = buffer.lookup_transform(msg.header.frame_id, WORLD_LINK, Time(seconds=msg.header.stamp.sec, nanoseconds=msg.header.stamp.nanosec) - Time(nanoseconds=TIME_OFFSET))
                 except Exception as e:
                     print(e)
                     print('Ignored image that could not be transformed')                    
@@ -164,8 +167,8 @@ def process_bag(bag_path):
             # we need to always find the matching pair of color and depth image
             print('Reading image messages')
             read_message = 0
-            open_color_images = [[]*num_cameras]
-            open_depth_images = [[]*num_cameras]
+            open_color_images = [[]]*num_cameras
+            open_depth_images = [[]]*num_cameras
             connections = [x for x in reader.connections if x.topic in IMAGE_TOPICS + DEPTH_TOPICS]            
             for connection, timestamp, rawdata in reader.messages(connections=connections): 
                 msg = typestore.deserialize_cdr(rawdata, connection.msgtype)
