@@ -3,6 +3,8 @@ from rosbags.rosbag2 import Reader
 from rosbags.highlevel import AnyReader
 from rosbags.typesys import Stores, get_typestore
 import yaml
+import rclpy
+import rclpy.time
 from vinspect.vinspect_py import Inspection
 from geometry_msgs.msg import TransformStamped
 from pathlib import Path
@@ -28,6 +30,8 @@ DEPTH_TRUNC = 0.50  # m
 WORLD_LINK = 'world'
 # this is only for debugging time issues in the messages
 TIME_OFFSET = 0.0  # 0.99*1e9 #ns
+# maximal delta time for color and depth message in seconds
+MAX_TIME_DELTA = 0.01  # seconds
 
 
 def deserialize_to_msg(desirialized_msg):
@@ -136,15 +140,18 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
             connections = [
                 x for x in reader.connections if x.topic in [args.color_topics[i], args.depth_topics[i]]]
             matched_images = 0
-            print(f'Reading images of sensor {i}')
+            print(f'Reading images of sensor {i+1} of {len(args.color_topics)}')
             for connection, timestamp, rawdata in reader.messages(connections=connections):
                 msg = TYPESTORE.deserialize_cdr(rawdata, connection.msgtype)
                 id = topic_to_id[connection.topic]
                 integrated = False
                 if connection.topic in args.color_topics:
                     for depth_image in open_depth_images:
-                        if depth_image.header.stamp.sec == msg.header.stamp.sec and \
-                                depth_image.header.stamp.nanosec == msg.header.stamp.nanosec:
+                        depth_time = Time(seconds=depth_image.header.stamp.sec,
+                                          nanoseconds=depth_image.header.stamp.nanosec)
+                        color_time = Time(seconds=msg.header.stamp.sec,
+                                          nanoseconds=msg.header.stamp.nanosec)
+                        if abs((depth_time - color_time).nanoseconds)/1e9 < MAX_TIME_DELTA:
                             integrate(msg, depth_image, id, tf_buffer, inspection)
                             integrated = True
                             matched_images += 1
@@ -153,8 +160,11 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
                         open_color_images.append(msg)
                 else:
                     for color_image in open_color_images:
-                        if color_image.header.stamp.sec == msg.header.stamp.sec and \
-                                color_image.header.stamp.nanosec == msg.header.stamp.nanosec:
+                        depth_time = Time(seconds=msg.header.stamp.sec,
+                                          nanoseconds=msg.header.stamp.nanosec)
+                        color_time = Time(seconds=color_image.header.stamp.sec,
+                                          nanoseconds=color_image.header.stamp.nanosec)
+                        if abs((depth_time - color_time).nanoseconds)/1e9 < MAX_TIME_DELTA:
                             integrate(color_image, msg, id, tf_buffer, inspection)
                             integrated = True
                             matched_images += 1
