@@ -79,7 +79,7 @@ def read_tf(bag_path, topic_message_numbers, args):
             for deserizled_transform in msg.transforms:
                 buffer.set_transform(deserialize_to_msg(deserizled_transform), 'rosbag_reader')
             read_message += 1
-            if (read_message) % 100 == 0:
+            if (read_message) % 1000 == 0:
                 percentage_done = read_message / topic_message_numbers[TF_TOPIC] * 100
                 print(f"\rProcessing... {percentage_done: .2f}% done", end='')
                 if percentage_done > args.read_percentage:
@@ -125,9 +125,6 @@ def integrate(des_color, des_depth, id, buffer, inspection):
 
 
 def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buffer, args):
-    all_image_count = 0
-    for topic in args.color_topics + args.depth_topics:
-        all_image_count += topic_message_numbers[topic]
     with AnyReader([Path(bag_path)], default_typestore=TYPESTORE) as reader:
         # now we can go through the images and integrate them
         # we need to always find the matching pair of color and depth image
@@ -146,7 +143,7 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
                 id = topic_to_id[connection.topic]
                 integrated = False
                 if connection.topic in args.color_topics:
-                    for depth_image in open_depth_images:
+                    for idx, depth_image in enumerate(open_depth_images):
                         depth_time = Time(seconds=depth_image.header.stamp.sec,
                                           nanoseconds=depth_image.header.stamp.nanosec)
                         color_time = Time(seconds=msg.header.stamp.sec,
@@ -155,11 +152,12 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
                             integrate(msg, depth_image, id, tf_buffer, inspection)
                             integrated = True
                             matched_images += 1
+                            open_depth_images.pop(idx)
                             break
                     if not integrated:
                         open_color_images.append(msg)
                 else:
-                    for color_image in open_color_images:
+                    for idx, color_image in enumerate(open_color_images):
                         depth_time = Time(seconds=msg.header.stamp.sec,
                                           nanoseconds=msg.header.stamp.nanosec)
                         color_time = Time(seconds=color_image.header.stamp.sec,
@@ -168,6 +166,7 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
                             integrate(color_image, msg, id, tf_buffer, inspection)
                             integrated = True
                             matched_images += 1
+                            open_color_images.pop(idx)
                             break
                     if not integrated:
                         open_depth_images.append(msg)
@@ -175,7 +174,8 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
                 # Print progress feedback for the user
                 read_message += 1
                 if (read_message) % 100 == 0:
-                    percentage_done = (read_message) / all_image_count * 100
+                    percentage_done = (
+                        read_message) / (topic_message_numbers[args.color_topics[i]] + topic_message_numbers[args.depth_topics[i]]) * 100
                     print(f"\rProcessing... {percentage_done: .2f}% done", end='')
                     if percentage_done > args.read_percentage:
                         break
