@@ -1,21 +1,14 @@
 import faulthandler
-import os
-import gc
-import time
-import cv2
 from rosbags.rosbag2 import Reader
 from rosbags.highlevel import AnyReader
 from rosbags.typesys import Stores, get_typestore
 import yaml
 from vinspect.vinspect_py import Inspection
-from std_msgs.msg import Header
-from sensor_msgs.msg import Image, CameraInfo
 from geometry_msgs.msg import TransformStamped
 from pathlib import Path
 from tf2_ros import Buffer
 from rclpy.duration import Duration
-from tf2_msgs.msg import TFMessage
-from geometry_msgs.msg import TransformStamped, Vector3, Quaternion, Transform
+from geometry_msgs.msg import TransformStamped
 from pprint import pprint
 import open3d as o3d
 from rclpy.time import Time
@@ -42,13 +35,8 @@ ALL_TOPICS = IMAGE_TOPICS + DEPTH_TOPICS + CAMERA_TOPICS + [TF_TOPIC] + [TF_STAT
 DEPTH_SCALE = 1000.0
 DEPTH_TRUNC = 0.50  # m
 WORLD_LINK = 'world'
-VOXEL_LENGTH = 0.005  # m
-SDF_TRUNC = 0.50  # m
-INSPECTION_SPACE_MIN = [-1.0, -1.0, -1.0]  # [-0.85,0.5,0.0]#m
-INSPECTION_SPACE_MAX = [1.0, 1.0, 1.0]  # [-0.25,1.0,0.3]#m
+# this is only for debugging time issues in the messages
 TIME_OFFSET = 0.0  # 0.99*1e9 #ns
-# only read this percentage of messages. 100 means read all messages. needs to be between 0 and 100.
-READ_PERCENTAGE = 100
 
 
 def deserialize_to_msg(desirialized_msg):
@@ -67,7 +55,7 @@ def deserialize_to_msg(desirialized_msg):
     return transform
 
 
-def read_tf(bag_path, topic_message_numbers):
+def read_tf(bag_path, topic_message_numbers, args):
     read_message = 0
     with AnyReader([Path(bag_path)], default_typestore=TYPESTORE) as reader:
         # First read all tf and tf_static messages into the buffer
@@ -87,8 +75,6 @@ def read_tf(bag_path, topic_message_numbers):
                 print(f"\rProcessing... {
                     read_message / topic_message_numbers[TF_STATIC_TOPIC] * 100:.2f}% done", end='')
 
-        gc.collect()
-
         read_message = 0
         print('\nReading dynamic TF messages')
         connections = [x for x in reader.connections if x.topic == TF_TOPIC]
@@ -101,11 +87,9 @@ def read_tf(bag_path, topic_message_numbers):
             if (read_message) % 100 == 0:
                 percentage_done = read_message / topic_message_numbers[TF_TOPIC] * 100
                 print(f"\rProcessing... {percentage_done: .2f}% done", end='')
-                if percentage_done > READ_PERCENTAGE:
+                if percentage_done > args.read_percentage:
                     break
         print(f"\rProcessing... 100.00% done")
-
-        gc.collect()
     return buffer
 
 
@@ -118,26 +102,13 @@ def read_camera_infos(bag_path, inspection):
             connections = [x for x in reader.connections if x.topic == camera_topic]
             for connection, timestamp, rawdata in reader.messages(connections=connections):
                 msg = TYPESTORE.deserialize_cdr(rawdata, connection.msgtype)
-                gc.collect()
                 inspection.set_intrinsic2(sensor_id, msg.width, msg.height,
                                           msg.k[0], msg.k[4], msg.k[2], msg.k[5])
-                # width = msg.width
-                # height = msg.height
-                # fx = msg.k[0]
-                # fy = msg.k[4]
-                # cx = msg.k[2]
-                # cy = msg.k[5]
-                # sensor_id2 = sensor_id
-                # inspection.set_intrinsic2(0, width, height, fx, fy, cx, cy)
-                gc.collect()
-                # currently only reading the first one
                 break
             sensor_id += 1
-    gc.collect()
 
 
 def integrate(des_color, des_depth, id, buffer, inspection):
-    print("integrate")
     color_array = np.frombuffer(des_color.data, dtype=np.uint8)
     color_reshaped_array = color_array.reshape(
         des_color.height, des_color.width, 3).astype(np.uint8)
@@ -170,7 +141,7 @@ def integrate(des_color, des_depth, id, buffer, inspection):
     inspection.integrate_image(rgbd_image, id, affine_matrix)
 
 
-def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buffer):
+def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buffer, args):
     all_image_count = 0
     for topic in IMAGE_TOPICS + DEPTH_TOPICS:
         all_image_count += topic_message_numbers[topic]
@@ -213,7 +184,7 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
                 if (read_message) % 100 == 0:
                     percentage_done = (read_message) / all_image_count * 100
                     print(f"\rProcessing... {percentage_done: .2f}% done", end='')
-                    if percentage_done > READ_PERCENTAGE:
+                    if percentage_done > args.read_percentage:
                         break
                     # o3d.visualization.draw_geometries([inspection.extract_dense_reconstruction()])
             print(f"\rProcessing... 100.00% done")
@@ -221,12 +192,12 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
                 len(open_color_images)}\n  depth: {len(open_depth_images)}')
 
 
-def process_bag(bag_path):
+def process_bag(bag_path, args):
     # Create a Vinspect object
     # TODO the sensor types need to be made configurable
-    inspection = Inspection(["RGBD", "RGBD", "RGBD"], inspection_space_min=INSPECTION_SPACE_MIN,
-                            inspection_space_max=INSPECTION_SPACE_MAX)
-    inspection.reinitialize_TSDF(VOXEL_LENGTH, SDF_TRUNC)
+    inspection = Inspection(["RGBD", "RGBD", "RGBD"], inspection_space_min=args.inspection_space_min,
+                            inspection_space_max=args.inspection_space_max)
+    inspection.reinitialize_TSDF(args.voxel_length, args.sdf_trunc)
     num_cameras = len(IMAGE_TOPICS)
     if len(IMAGE_TOPICS) != len(DEPTH_TOPICS):
         print('Image and depth topics do not match')
@@ -273,9 +244,9 @@ def process_bag(bag_path):
     except UnicodeDecodeError:
         print('Error decoding bag file. Are you sure that you provided the path to the folder and not to the mcap file?')
 
-    tf_buffer = read_tf(bag_path, topic_message_numbers)
+    tf_buffer = read_tf(bag_path, topic_message_numbers, args)
     read_camera_infos(bag_path, inspection)
-    read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buffer)
+    read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buffer, args)
 
     # Provide statistics to the user when finished reading the bag
     print("Statistics:")
@@ -283,15 +254,22 @@ def process_bag(bag_path):
     mesh = inspection.extract_dense_reconstruction()
     print(mesh)
     # save the mesh
+    mesh.compute_triangle_normals()
     o3d.io.write_triangle_mesh("mesh.stl", mesh)
     o3d.visualization.draw_geometries([mesh])
-    # print(f"Mean processing time per image: {inspection.mean_process_time:.4f} s")
-    # print(f"Total processing time: {inspection.total_process_time:.4f} s")
 
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Process a ROS2 bag file.")
     parser.add_argument("bag_path", help="Path to the ROS2 bag file.")
+    parser.add_argument('--voxel-length', type=float, default=0.005, help=f'Voxel length')
+    parser.add_argument('--sdf-trunc', type=int, default=0.50, help=f'SDF truncation distance')
+    parser.add_argument('--inspection-space-min', type=float, nargs='+', default=[-1.0, -1.0, -1.0],  # [-0.85,0.5,0.0]#m
+                        help=f'Inspection space minimal boundaries as vector x y z in m')
+    parser.add_argument('--inspection-space-max', type=float, nargs='+', default=[1.0, 1.0, 1.0],  # [-0.25,1.0,0.3]#m
+                        help=f'Inspection space maximal boundaries as vector x y z in m')
+    parser.add_argument('--read-percentage', type=float, default=100,
+                        help=f'How much of the rosbag should be read. Useful for quick testing.')
     args = parser.parse_args()
-    process_bag(args.bag_path)
+    process_bag(args.bag_path, args)
