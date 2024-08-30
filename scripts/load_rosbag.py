@@ -15,22 +15,13 @@ from rclpy.time import Time
 import numpy as np
 from transforms3d.affines import compose
 from transforms3d.quaternions import quat2mat
+from rosbags.image import message_to_cvimage
 
 faulthandler.enable()
 TYPESTORE = get_typestore(Stores.LATEST)
 
-IMAGE_TOPICS = ['/camera/camera/color/image_rect_raw',
-                # '/camera1/camera1/color/image_rect_raw',
-                '/camera2/camera2/color/image_rect_raw']
-DEPTH_TOPICS = ['/camera/camera/depth/image_rect_raw',
-                # '/camera1/camera1/depth/image_rect_raw',
-                '/camera2/camera2/depth/image_rect_raw']
-CAMERA_TOPICS = ['/camera/camera/color/camera_info',
-                 # '/camera1/camera1/color/camera_info',
-                 '/camera2/camera2/color/camera_info']
 TF_TOPIC = '/tf'
 TF_STATIC_TOPIC = '/tf_static'
-ALL_TOPICS = IMAGE_TOPICS + DEPTH_TOPICS + CAMERA_TOPICS + [TF_TOPIC] + [TF_STATIC_TOPIC]
 
 DEPTH_SCALE = 1000.0
 DEPTH_TRUNC = 0.50  # m
@@ -93,12 +84,12 @@ def read_tf(bag_path, topic_message_numbers, args):
     return buffer
 
 
-def read_camera_infos(bag_path, inspection):
+def read_camera_infos(bag_path, inspection, args):
     sensor_id = 0
     with AnyReader([Path(bag_path)], default_typestore=TYPESTORE) as reader:
         # read camera infos one by one to make sure we match sensor IDs correctly
         print('Reading camera info messages')
-        for camera_topic in CAMERA_TOPICS:
+        for camera_topic in args.info_topics:
             connections = [x for x in reader.connections if x.topic == camera_topic]
             for connection, timestamp, rawdata in reader.messages(connections=connections):
                 msg = TYPESTORE.deserialize_cdr(rawdata, connection.msgtype)
@@ -109,20 +100,8 @@ def read_camera_infos(bag_path, inspection):
 
 
 def integrate(des_color, des_depth, id, buffer, inspection):
-    color_array = np.frombuffer(des_color.data, dtype=np.uint8)
-    color_reshaped_array = color_array.reshape(
-        des_color.height, des_color.width, 3).astype(np.uint8)
-    color_img = o3d.cpu.pybind.geometry.Image(color_reshaped_array)
-
-    depth_array = np.frombuffer(des_depth.data, dtype=np.uint16)
-    reshaped_array = depth_array.reshape(
-        des_depth.height, des_depth.width).astype(np.uint16)
-    depth_img = o3d.cpu.pybind.geometry.Image(reshaped_array)
-    # o3d.visualization.draw_geometries([color_img])
-    # o3d.visualization.draw_geometries([depth_img])
-    rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(o3d.cpu.pybind.geometry.Image(color_reshaped_array), o3d.cpu.pybind.geometry.Image(
-        reshaped_array), depth_scale=DEPTH_SCALE, depth_trunc=DEPTH_TRUNC, convert_rgb_to_intensity=False)
-    # o3d.visualization.draw_geometries([rgbd_image])
+    rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(o3d.cpu.pybind.geometry.Image(message_to_cvimage(des_color)), o3d.cpu.pybind.geometry.Image(
+        message_to_cvimage(des_depth)), depth_scale=DEPTH_SCALE, depth_trunc=DEPTH_TRUNC, convert_rgb_to_intensity=False)
     # get corresponding pose from tf2
     try:
         # TODO check if it makes sense that we use the color msg as frame of reference
@@ -143,29 +122,32 @@ def integrate(des_color, des_depth, id, buffer, inspection):
 
 def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buffer, args):
     all_image_count = 0
-    for topic in IMAGE_TOPICS + DEPTH_TOPICS:
+    for topic in args.color_topics + args.depth_topics:
         all_image_count += topic_message_numbers[topic]
     with AnyReader([Path(bag_path)], default_typestore=TYPESTORE) as reader:
         # now we can go through the images and integrate them
         # we need to always find the matching pair of color and depth image
         print('Reading image messages')
         # We are reading the messages in pairs to match color and depth
-        for i in range(len(IMAGE_TOPICS)):
+        for i in range(len(args.color_topics)):
             read_message = 0
             open_color_images = []
             open_depth_images = []
             connections = [
-                x for x in reader.connections if x.topic in [IMAGE_TOPICS[i], DEPTH_TOPICS[i]]]
+                x for x in reader.connections if x.topic in [args.color_topics[i], args.depth_topics[i]]]
+            matched_images = 0
+            print(f'Reading images of sensor {i}')
             for connection, timestamp, rawdata in reader.messages(connections=connections):
                 msg = TYPESTORE.deserialize_cdr(rawdata, connection.msgtype)
                 id = topic_to_id[connection.topic]
                 integrated = False
-                if connection.topic in IMAGE_TOPICS:
+                if connection.topic in args.color_topics:
                     for depth_image in open_depth_images:
                         if depth_image.header.stamp.sec == msg.header.stamp.sec and \
                                 depth_image.header.stamp.nanosec == msg.header.stamp.nanosec:
                             integrate(msg, depth_image, id, tf_buffer, inspection)
                             integrated = True
+                            matched_images += 1
                             break
                     if not integrated:
                         open_color_images.append(msg)
@@ -175,6 +157,7 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
                                 color_image.header.stamp.nanosec == msg.header.stamp.nanosec:
                             integrate(color_image, msg, id, tf_buffer, inspection)
                             integrated = True
+                            matched_images += 1
                             break
                     if not integrated:
                         open_depth_images.append(msg)
@@ -188,7 +171,8 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
                         break
                     # o3d.visualization.draw_geometries([inspection.extract_dense_reconstruction()])
             print(f"\rProcessing... 100.00% done")
-            print(f'The following count of images were not matchable\n  color: {
+            print(f'{matched_images} images were matched correctly.')
+            print(f'The following count of images were not matchable for sensor {i}\n  color: {
                 len(open_color_images)}\n  depth: {len(open_depth_images)}')
 
 
@@ -198,20 +182,20 @@ def process_bag(bag_path, args):
     inspection = Inspection(["RGBD", "RGBD", "RGBD"], inspection_space_min=args.inspection_space_min,
                             inspection_space_max=args.inspection_space_max)
     inspection.reinitialize_TSDF(args.voxel_length, args.sdf_trunc)
-    num_cameras = len(IMAGE_TOPICS)
-    if len(IMAGE_TOPICS) != len(DEPTH_TOPICS):
+    num_cameras = len(args.color_topics)
+    if len(args.color_topics) != len(args.depth_topics):
         print('Image and depth topics do not match')
         exit()
 
     topic_to_id = {}
     for i in range(num_cameras):
-        topic_to_id[IMAGE_TOPICS[i]] = i
-        topic_to_id[DEPTH_TOPICS[i]] = i
+        topic_to_id[args.color_topics[i]] = i
+        topic_to_id[args.depth_topics[i]] = i
 
     try:
         with AnyReader([Path(bag_path)], default_typestore=TYPESTORE) as reader:
             # Check if all topics are present
-            for topic in ALL_TOPICS:
+            for topic in args.color_topics + args.depth_topics + args.info_topics + [TF_TOPIC] + [TF_STATIC_TOPIC]:
                 exists_in_bag = False
                 for connection in reader.connections:
                     if topic == connection.topic:
@@ -236,7 +220,7 @@ def process_bag(bag_path, args):
             pprint(topic_message_numbers)
 
             # Sanity check
-            for camera_topic in CAMERA_TOPICS:
+            for camera_topic in args.info_topics:
                 if topic_message_numbers[camera_topic] == 0:
                     print(f'Did not find camera info messages for all cameras! Problem with camera_info topic {
                           camera_topic}')
@@ -245,12 +229,14 @@ def process_bag(bag_path, args):
         print('Error decoding bag file. Are you sure that you provided the path to the folder and not to the mcap file?')
 
     tf_buffer = read_tf(bag_path, topic_message_numbers, args)
-    read_camera_infos(bag_path, inspection)
+    read_camera_infos(bag_path, inspection, args)
     read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buffer, args)
 
     # Provide statistics to the user when finished reading the bag
     print("Statistics:")
     print(f'Integrated images {inspection.get_integrated_images_count()}')
+    if inspection.get_integrated_images_count() == 0:
+        print(f'No mesh could be reconstructed. Please check if the inspection space boundaries are correct.')
     mesh = inspection.extract_dense_reconstruction()
     print(mesh)
     # save the mesh
@@ -263,6 +249,13 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Process a ROS2 bag file.")
     parser.add_argument("bag_path", help="Path to the ROS2 bag file.")
+    parser.add_argument('--color-topics', type=str, nargs='+',  # '/camera/camera/color/image_rect_raw','/camera1/camera1/color/image_rect_raw',/camera2/camera2/color/image_rect_raw']
+                        help='The color topics that should be used')
+    parser.add_argument('--depth-topics', type=str, nargs='+',  # '/camera/camera/depth/image_rect_raw', '/camera1/camera1/depth/image_rect_raw', '/camera2/camera2/depth/image_rect_raw'
+                        help='The depth topics that should be used, in matching order to the color topics')
+    parser.add_argument('--info-topics', type=str, nargs='+',  # '/camera/camera/color/camera_info',  '/camera1/camera1/color/camera_info','/camera2/camera2/color/camera_info']
+                        help='The camera info topics that should be used, in matching order to the color topics')
+
     parser.add_argument('--voxel-length', type=float, default=0.005, help=f'Voxel length')
     parser.add_argument('--sdf-trunc', type=int, default=0.50, help=f'SDF truncation distance')
     parser.add_argument('--inspection-space-min', type=float, nargs='+', default=[-1.0, -1.0, -1.0],  # [-0.85,0.5,0.0]#m
