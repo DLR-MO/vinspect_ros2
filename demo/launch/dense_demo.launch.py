@@ -19,21 +19,21 @@ def generate_launch_description():
         parameters=[
             {
                 'frame_id': 'world',
-                'sensor_types': ['RGB'],
+                'sensor_types': ['RGBD', 'RGBD', 'RGBD'],
                 'rgbd_color_topics': [
-                    '/camera/color/image_rect_raw',
-                    '/camera1/color/image_rect_raw',
-                    '/camera2/color/image_rect_raw',
+                    '/camera/camera/color/image_rect_raw',
+                    '/camera1/camera1/color/image_rect_raw',
+                    '/camera2/camera2/color/image_rect_raw',
                 ],
                 'rgbd_depth_topics': [
-                    '/camera/depth/image_rect_raw',
-                    '/camera1/depth/image_rect_raw',
-                    '/camera2/depth/image_rect_raw',
+                    '/camera/camera/depth/image_rect_raw',
+                    '/camera1/camera1/depth/image_rect_raw',
+                    '/camera2/camera2/depth/image_rect_raw',
                 ],
                 'rgbd_info_topics': [
-                    '/camera/color/camera_info',
-                    '/camera1/color/camera_info',
-                    '/camera2/color/camera_info',
+                    '/camera/camera/color/camera_info',
+                    '/camera1/camera1/color/camera_info',
+                    '/camera2/camera2/color/camera_info',
                 ],
                 'use_sim_time': True,
                 'inspection_space_min': [-2.5, -2.0, -2.0],

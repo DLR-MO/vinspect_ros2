@@ -10,7 +10,6 @@ from geometry_msgs.msg import TransformStamped
 from pathlib import Path
 from tf2_ros import Buffer
 from rclpy.duration import Duration
-from geometry_msgs.msg import TransformStamped
 from pprint import pprint
 import open3d as o3d
 from rclpy.time import Time
@@ -70,6 +69,19 @@ def read_tf(bag_path, topic_message_numbers, args):
                 print(f"\rProcessing... {
                     read_message / topic_message_numbers[TF_STATIC_TOPIC] * 100:.2f}% done", end='')
 
+        if args.apply_tf_hack:
+            hack_transform = TransformStamped()
+            hack_transform.header.frame_id = 'camera2_color_optical_frame'
+            hack_transform.child_frame_id = 'camera2_color_optical_frame2'
+            hack_transform.transform.translation.x = 0
+            hack_transform.transform.translation.y = 0
+            hack_transform.transform.translation.z = 0
+            hack_transform.transform.rotation.x = 0
+            hack_transform.transform.rotation.y = 0
+            hack_transform.transform.rotation.z = 1
+            hack_transform.transform.rotation.w = 0
+            buffer.set_transform_static(hack_transform, 'hack_transform')
+
         read_message = 0
         print('\nReading dynamic TF messages')
         connections = [x for x in reader.connections if x.topic == TF_TOPIC]
@@ -103,13 +115,18 @@ def read_camera_infos(bag_path, inspection, args):
             sensor_id += 1
 
 
-def integrate(des_color, des_depth, id, buffer, inspection):
+def integrate(des_color, des_depth, id, buffer, inspection, args):
     rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(o3d.cpu.pybind.geometry.Image(message_to_cvimage(des_color)), o3d.cpu.pybind.geometry.Image(
         message_to_cvimage(des_depth)), depth_scale=DEPTH_SCALE, depth_trunc=DEPTH_TRUNC, convert_rgb_to_intensity=False)
     # get corresponding pose from tf2
     try:
         # TODO check if it makes sense that we use the color msg as frame of reference
-        trans = buffer.lookup_transform(des_color.header.frame_id, WORLD_LINK, Time(
+        # print(f'{des_color.header.frame_id}')
+        frame = des_color.header.frame_id
+        if args.apply_tf_hack:
+            if frame == 'camera2_color_optical_frame':
+                frame = 'camera2_color_optical_frame2'
+        trans = buffer.lookup_transform(frame, WORLD_LINK, Time(
             seconds=des_color.header.stamp.sec, nanoseconds=des_color.header.stamp.nanosec) - Time(nanoseconds=TIME_OFFSET))
     except Exception as e:
         print(e)
@@ -149,7 +166,7 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
                         color_time = Time(seconds=msg.header.stamp.sec,
                                           nanoseconds=msg.header.stamp.nanosec)
                         if abs((depth_time - color_time).nanoseconds)/1e9 < MAX_TIME_DELTA:
-                            integrate(msg, depth_image, id, tf_buffer, inspection)
+                            integrate(msg, depth_image, id, tf_buffer, inspection, args)
                             integrated = True
                             matched_images += 1
                             open_depth_images.pop(idx)
@@ -163,7 +180,7 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
                         color_time = Time(seconds=color_image.header.stamp.sec,
                                           nanoseconds=color_image.header.stamp.nanosec)
                         if abs((depth_time - color_time).nanoseconds)/1e9 < MAX_TIME_DELTA:
-                            integrate(color_image, msg, id, tf_buffer, inspection)
+                            integrate(color_image, msg, id, tf_buffer, inspection, args)
                             integrated = True
                             matched_images += 1
                             open_color_images.pop(idx)
@@ -266,13 +283,16 @@ if __name__ == "__main__":
     parser.add_argument('--info-topics', type=str, nargs='+',  # '/camera/camera/color/camera_info',  '/camera1/camera1/color/camera_info','/camera2/camera2/color/camera_info']
                         help='The camera info topics that should be used, in matching order to the color topics')
 
-    parser.add_argument('--voxel-length', type=float, default=0.005, help=f'Voxel length')
-    parser.add_argument('--sdf-trunc', type=int, default=0.50, help=f'SDF truncation distance')
+    parser.add_argument('--voxel-length', type=float, default=0.005, help=f'Voxel length [m]')
+    parser.add_argument('--sdf-trunc', type=float, default=0.05,
+                        help=f'SDF truncation distance [m]')
     parser.add_argument('--inspection-space-min', type=float, nargs='+', default=[-1.0, -1.0, -1.0],  # [-0.85,0.5,0.0]#m
                         help=f'Inspection space minimal boundaries as vector x y z in m')
     parser.add_argument('--inspection-space-max', type=float, nargs='+', default=[1.0, 1.0, 1.0],  # [-0.25,1.0,0.3]#m
                         help=f'Inspection space maximal boundaries as vector x y z in m')
     parser.add_argument('--read-percentage', type=float, default=100,
                         help=f'How much of the rosbag should be read. Useful for quick testing.')
+    parser.add_argument('--apply-tf-hack', action='store_true', default=False,
+                        help=f'Just a quick hack for a wrong tf')
     args = parser.parse_args()
     process_bag(args.bag_path, args)
