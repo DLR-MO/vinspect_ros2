@@ -26,9 +26,11 @@
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_msgs/msg/color_rgba.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/int32.hpp>
 #include <std_srvs/srv/empty.hpp>
 #include <visualization_msgs/msg/interactive_marker_feedback.hpp>
 #include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include "vinspect/sparse_mesh.hpp"
 #include "vinspect/inspection.hpp"
@@ -36,6 +38,7 @@
 #include "vinspect_msgs/msg/settings.hpp"
 #include "vinspect_msgs/msg/sparse.hpp"
 #include "vinspect_msgs/msg/status.hpp"
+
 #include "vinspect_msgs/srv/start_reconstruction.hpp"
 
 using namespace std::chrono_literals;
@@ -213,6 +216,8 @@ public:
     ref_marker_pub_ =
       this->create_publisher<visualization_msgs::msg::Marker>("ref_mesh", latching_qos);
     dense_image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("dense_image", latching_qos);
+    multi_dense_poses_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("visualization_marker_array", latching_qos);
+
     old_object_ = "Null";
     old_transparency_ = -0.1;
     last_mesh_number_sparse_ = -1;
@@ -269,7 +274,13 @@ public:
     options3.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     dense_req_sub = this->create_subscription<std_msgs::msg::String>(
       "vinspect/dense_data_req", latching_qos,
-      std::bind(&VinspectNode::dense_data_req, this, std::placeholders::_1), options3);
+      std::bind(&VinspectNode::denseDataReq, this, std::placeholders::_1), options3);
+
+    rclcpp::SubscriptionOptions options4;
+    options4.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    multi_dense_req_sub = this->create_subscription<std_msgs::msg::Int32>(
+      "vinspect/multi_dense_data_req", latching_qos,
+      std::bind(&VinspectNode::multiDenseDataReq, this, std::placeholders::_1), options4);
 
     // todo should be true at the beginning and started with service call
     dense_pause_ = true;
@@ -322,19 +333,19 @@ public:
 
     // handle interactive marker feedback
     display_data_pub_ = this->create_publisher<vinspect_msgs::msg::AreaData>("display_info", 2);
-    rclcpp::SubscriptionOptions options4;
-    options4.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions options5;
+    options5.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     selection_marker_sub_ =
       this->create_subscription<visualization_msgs::msg::InteractiveMarkerFeedback>(
       "selection_marker/feedback", 10,
-      std::bind(&VinspectNode::sparseInteractiveMarkerCb, this, std::placeholders::_1), options4);
+      std::bind(&VinspectNode::sparseInteractiveMarkerCb, this, std::placeholders::_1), options5);
 
-    rclcpp::SubscriptionOptions options5;
-    options4.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions options6;
+    options6.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     selection_marker_sub_ =
       this->create_subscription<visualization_msgs::msg::InteractiveMarkerFeedback>(
       "pose_marker/feedback", 10,
-      std::bind(&VinspectNode::denseInteractiveMarkerCb, this, std::placeholders::_1), options5);
+      std::bind(&VinspectNode::denseInteractiveMarkerCb, this, std::placeholders::_1), options6);
 
     RCLCPP_INFO(this->get_logger(), "Inspection initialized. You can now start recording data.");
   }
@@ -636,7 +647,7 @@ private:
    */
   // Note: If it stays like this, it could also be a service/client call. Thought we have more
   // options in the future if this message is used as a settings string or something similar later.
-  void dense_data_req(std_msgs::msg::String)
+  void denseDataReq(std_msgs::msg::String)
   {
     mtx_.lock();
     if (inspection_.getDenseDataCount() == 0) {
@@ -664,6 +675,42 @@ private:
       // round to number of decimals after the decimal point
       return round(value * pow(10, round_to_decimals_)) / pow(10, round_to_decimals_);
     }
+  }
+
+  void multiDenseDataReq(std_msgs::msg::Int32 msg)
+  {
+    std::vector<std::array<double, 6>> poses = inspection_.getMultiDensePoses(msg.data);
+    
+    visualization_msgs::msg::MarkerArray markerArr = visualization_msgs::msg::MarkerArray();
+    for (size_t i = 0; i < poses.size(); i++)
+    {
+      std::array<double, 7> quat_pose = inspection_.eulerToQuatPose(poses[i]);
+      visualization_msgs::msg::Marker marker = visualization_msgs::msg::Marker();
+      marker.header.frame_id = "world";
+      marker.type = visualization_msgs::msg::Marker::ARROW;
+      marker.id = i;
+      marker.ns = "allDensePoses";
+      marker.action = marker.ADD;
+      marker.frame_locked = true;
+
+      marker.pose.position.x = quat_pose[0];
+      marker.pose.position.y = quat_pose[1];
+      marker.pose.position.z = quat_pose[2];
+      marker.pose.orientation.x = quat_pose[3];
+      marker.pose.orientation.y = quat_pose[4]; 
+      marker.pose.orientation.z = quat_pose[5];
+      marker.pose.orientation.w = quat_pose[6];
+      marker.scale.x = 0.05;
+      marker.scale.y = 0.005;
+      marker.scale.z = 0.005;
+      marker.color.r = 1.0;
+      marker.color.g = 0.0;
+      marker.color.b = 0.0;
+      marker.color.a = 1.0;
+      markerArr.markers.push_back(marker);
+    }
+    multi_dense_poses_pub_->publish(markerArr);
+    RCLCPP_INFO(this->get_logger(), "Showing: requested available poses.");
   }
 
   /**
@@ -916,6 +963,7 @@ private:
   rclcpp::Publisher<vinspect_msgs::msg::AreaData>::SharedPtr display_data_pub_;
   rclcpp::Publisher<vinspect_msgs::msg::Status>::SharedPtr status_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr dense_image_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr multi_dense_poses_pub_;
 
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_states_sub_;
   rclcpp::Subscription<vinspect_msgs::msg::Sparse>::SharedPtr sparse_sub_;
@@ -927,6 +975,7 @@ private:
   rclcpp::Subscription<visualization_msgs::msg::InteractiveMarkerFeedback>::SharedPtr
     selection_marker_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr dense_req_sub;
+  rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr multi_dense_req_sub;
 
   rclcpp::Service<vinspect_msgs::srv::StartReconstruction>::SharedPtr start_reconstruction_service_;
   rclcpp::Service<std_srvs::srv::Empty>::SharedPtr stop_reconstruction_service_;

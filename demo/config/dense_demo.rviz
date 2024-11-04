@@ -137,6 +137,18 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /dense_image
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        allDensePoses: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: visualization_marker_array
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255
@@ -163,25 +175,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 4.980933666229248
+      Distance: 4.718845844268799
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.2785576581954956
-        Y: 0.2554641366004944
-        Z: -0.25609198212623596
+        X: -1.372643232345581
+        Y: 0.6465715765953064
+        Z: 0.1173165962100029
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.6338329315185547
+      Pitch: 0.36383309960365295
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 4.882578372955322
+      Yaw: 5.1875762939453125
     Saved: ~
 Window Geometry:
   Area Panel:
@@ -207,5 +219,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1908
-  X: 2299
-  Y: 43
+  X: 2234
+  Y: -21
