@@ -19,8 +19,10 @@ def generate_launch_description():
             {
                 'ref_mesh_path': 'package://vinspect_ros2/data/box.ply',
                 'frame_id': 'world',
-                'inspection_space_min': [-1.0, -1.0, -1.0],
-                'inspection_space_max': [1.0, 1.0, 1.0],
+                'inspection_space_3d_min': [-1.0, -1.0, -1.0],
+                'inspection_space_3d_max': [1.0, 1.0, 1.0],
+                'inspection_space_6d_min': [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0],
+                'inspection_space_6d_max': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
                 'sensor_types': ['SPARSE'],
                 'save_path': '/tmp/demo.vinspect',
                 'sensor_data_type_names': [

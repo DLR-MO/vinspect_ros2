@@ -8,6 +8,7 @@
 #include <open3d/Open3D.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <chrono>
 #include <iostream>
@@ -24,9 +25,12 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_msgs/msg/color_rgba.hpp>
+#include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/int32.hpp>
 #include <std_srvs/srv/empty.hpp>
 #include <visualization_msgs/msg/interactive_marker_feedback.hpp>
 #include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include "vinspect/sparse_mesh.hpp"
 #include "vinspect/inspection.hpp"
@@ -34,6 +38,7 @@
 #include "vinspect_msgs/msg/settings.hpp"
 #include "vinspect_msgs/msg/sparse.hpp"
 #include "vinspect_msgs/msg/status.hpp"
+
 #include "vinspect_msgs/srv/start_reconstruction.hpp"
 
 using namespace std::chrono_literals;
@@ -88,21 +93,45 @@ public:
     frame_id_ = declare_parameter<std::string>("frame_id", "world");
     record_joints_ = declare_parameter<bool>("record_joints", false);
     current_ref_mesh_ = declare_parameter<std::string>("ref_mesh_path", "");
-    std::vector<double> inspection_space_min = declare_parameter<std::vector<double>>(
-      "inspection_space_min", {-1.0, -1.0, -1.0});
-    std::vector<double> inspection_space_max = declare_parameter<std::vector<double>>(
-      "inspection_space_max", {1.0, 1.0, 1.0});
+    std::vector<double> dense_senor_resolution = declare_parameter<std::vector<double>>(
+      "dense_senor_resolution", {1.0, 1.0});
+    std::vector<double> inspection_space_3d_min = declare_parameter<std::vector<double>>(
+      "inspection_space_3d_min", {-1.0, -1.0, -1.0});
+    std::vector<double> inspection_space_3d_max = declare_parameter<std::vector<double>>(
+      "inspection_space_3d_max", {1.0, 1.0, 1.0});
+    std::vector<double> inspection_space_6d_min = declare_parameter<std::vector<double>>(
+      "inspection_space_6d_min", {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0});
+    std::vector<double> inspection_space_6d_max = declare_parameter<std::vector<double>>(
+      "inspection_space_6d_max", {1.0, 1.0, 1.0, 1.0, 1.0, 1.0});
     if (
-      inspection_space_min[0] < inspection_space_max[0] &&
-      inspection_space_min[1] < inspection_space_max[1] &&
-      inspection_space_min[2] < inspection_space_max[2])
+      inspection_space_3d_min[0] < inspection_space_3d_max[0] &&
+      inspection_space_3d_min[1] < inspection_space_3d_max[1] &&
+      inspection_space_3d_min[2] < inspection_space_3d_max[2])
     {
-      inspection_space_min_ = {
-        inspection_space_min[0], inspection_space_min[1], inspection_space_min[2]};
-      inspection_space_max_ = {
-        inspection_space_max[0], inspection_space_max[1], inspection_space_max[2]};
+      inspection_space_3d_min_ = {
+        inspection_space_3d_min[0], inspection_space_3d_min[1], inspection_space_3d_min[2]};
+      inspection_space_3d_max_ = {
+        inspection_space_3d_max[0], inspection_space_3d_max[1], inspection_space_3d_max[2]};
     } else {
-      RCLCPP_ERROR(get_logger(), "The inspection space min and max values are not valid.");
+      RCLCPP_ERROR(get_logger(), "The 3D inspection space min and max values are not valid.");
+      exit(1);
+    }
+    if (
+      inspection_space_6d_min[0] < inspection_space_6d_max[0] &&
+      inspection_space_6d_min[1] < inspection_space_6d_max[1] &&
+      inspection_space_6d_min[2] < inspection_space_6d_max[2] &&
+      inspection_space_6d_min[3] < inspection_space_6d_max[3] &&
+      inspection_space_6d_min[4] < inspection_space_6d_max[4] &&
+      inspection_space_6d_min[5] < inspection_space_6d_max[5])
+    {
+      inspection_space_6d_min_ = {
+        inspection_space_6d_min[0], inspection_space_6d_min[1], inspection_space_6d_min[2],
+        inspection_space_6d_min[3], inspection_space_6d_min[4], inspection_space_6d_min[5]};
+      inspection_space_6d_max_ = {
+        inspection_space_6d_max[0], inspection_space_6d_max[1], inspection_space_6d_max[2],
+        inspection_space_6d_max[3], inspection_space_6d_max[4], inspection_space_6d_max[5]};
+    } else {
+      RCLCPP_ERROR(get_logger(), "The 6D inspection space min and max values are not valid.");
       exit(1);
     }
 
@@ -148,7 +177,7 @@ public:
         std::string package_path = ament_index_cpp::get_package_share_directory(package_name);
         path = package_path + "/" + sub_path.substr(end_index + 1);
       }
-      if(!open3d::io::ReadTriangleMesh(path, mesh_)){
+      if (!open3d::io::ReadTriangleMesh(path, mesh_)) {
         RCLCPP_ERROR(this->get_logger(), "Error reading reference mesh.");
       }
     } else {
@@ -165,11 +194,13 @@ public:
       // todo we would need to check if any header information changed
       inspection_ = vinspect::load(save_path_);
     } else {
-      std::tuple<int, int> tuple = std::tuple<int, int>(0, 0);  // todo
       std::vector<std::string> joint_names = {};                // todo
       inspection_ = vinspect::Inspection(
-        sensor_types, sensor_data_type_names, sensor_data_type_units, joint_names, mesh_, tuple,
-        save_path_, inspection_space_min_, inspection_space_max_, sparse_min_color_values,
+        sensor_types, sensor_data_type_names, sensor_data_type_units, joint_names, mesh_, std::make_tuple(
+          dense_senor_resolution[0],
+          dense_senor_resolution[1]),
+        save_path_, inspection_space_3d_min_, inspection_space_3d_max_, inspection_space_6d_min_,
+        inspection_space_6d_max_, sparse_min_color_values,
         sparse_max_color_values);
     }
     inspection_.startSaving();
@@ -184,6 +215,9 @@ public:
       this->create_publisher<visualization_msgs::msg::Marker>("dense_mesh", latching_qos);
     ref_marker_pub_ =
       this->create_publisher<visualization_msgs::msg::Marker>("ref_mesh", latching_qos);
+    dense_image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("dense_image", latching_qos);
+    multi_dense_poses_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("visualization_marker_array", latching_qos);
+
     old_object_ = "Null";
     old_transparency_ = -0.1;
     last_mesh_number_sparse_ = -1;
@@ -236,6 +270,18 @@ public:
         std::bind(&VinspectNode::sparseCb, this, std::placeholders::_1), options2);
     }
 
+    rclcpp::SubscriptionOptions options3;
+    options3.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    dense_req_sub = this->create_subscription<std_msgs::msg::String>(
+      "vinspect/dense_data_req", latching_qos,
+      std::bind(&VinspectNode::denseDataReq, this, std::placeholders::_1), options3);
+
+    rclcpp::SubscriptionOptions options4;
+    options4.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    multi_dense_req_sub = this->create_subscription<std_msgs::msg::Int32>(
+      "vinspect/multi_dense_data_req", latching_qos,
+      std::bind(&VinspectNode::multiDenseDataReq, this, std::placeholders::_1), options4);
+
     // todo should be true at the beginning and started with service call
     dense_pause_ = true;
     if (rgbd_color_topics.size() > 0 && rgbd_color_topics[0] != "") {
@@ -287,12 +333,19 @@ public:
 
     // handle interactive marker feedback
     display_data_pub_ = this->create_publisher<vinspect_msgs::msg::AreaData>("display_info", 2);
-    rclcpp::SubscriptionOptions options3;
-    options3.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions options5;
+    options5.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     selection_marker_sub_ =
       this->create_subscription<visualization_msgs::msg::InteractiveMarkerFeedback>(
       "selection_marker/feedback", 10,
-      std::bind(&VinspectNode::interactiveMarkerCb, this, std::placeholders::_1), options3);
+      std::bind(&VinspectNode::sparseInteractiveMarkerCb, this, std::placeholders::_1), options5);
+
+    rclcpp::SubscriptionOptions options6;
+    options6.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    selection_marker_sub_ =
+      this->create_subscription<visualization_msgs::msg::InteractiveMarkerFeedback>(
+      "pose_marker/feedback", 10,
+      std::bind(&VinspectNode::denseInteractiveMarkerCb, this, std::placeholders::_1), options6);
 
     RCLCPP_INFO(this->get_logger(), "Inspection initialized. You can now start recording data.");
   }
@@ -459,7 +512,7 @@ private:
     }
   }
 
-  void interactiveMarkerCb(visualization_msgs::msg::InteractiveMarkerFeedback feedback)
+  void sparseInteractiveMarkerCb(visualization_msgs::msg::InteractiveMarkerFeedback feedback)
   {
     if (feedback.event_type == visualization_msgs::msg::InteractiveMarkerFeedback::MOUSE_UP) {
       std::array<double, 3> point_coords = {
@@ -503,6 +556,116 @@ private:
     }
   }
 
+  /**
+   * Orders the image from a std::vector<std::vector<std::array<u_int8_t,3>>>
+   * To sensor_msgs::msg::Image type.
+   * @param image in as vector
+   * @return image as sensor_msgs::msg::Image
+   */
+  sensor_msgs::msg::Image vectorToImageMsg(
+    const std::vector<std::vector<std::array<u_int8_t,
+    3>>> & image)
+  {
+    sensor_msgs::msg::Image msg;
+    msg.height = image.size();
+    msg.width = image[1].size();
+
+    msg.encoding = "rgb8";
+
+    msg.step = msg.width * 3;
+
+    msg.data.resize(msg.height * msg.step);
+    for (size_t i = 0; i < msg.height; i++) {
+      for (size_t j = 0; j < msg.width; j++) {
+        size_t index = (i * msg.width + j) * 3;
+        msg.data[index + 0] = image[i][j][0];
+        msg.data[index + 1] = image[i][j][1];
+        msg.data[index + 2] = image[i][j][2];
+      }
+    }
+    return msg;
+  }
+  /**
+   * Callback for the denseInteractiveMarker. Used to set the current pose.
+   * @param feedback InteractiveMarkerFeedback message
+   * @return None
+   */
+  void denseInteractiveMarkerCb(visualization_msgs::msg::InteractiveMarkerFeedback feedback)
+  {
+    if (feedback.event_type == visualization_msgs::msg::InteractiveMarkerFeedback::MOUSE_UP) {
+      dense_interactive_marker_pose_ = {
+        feedback.pose.position.x, feedback.pose.position.y, feedback.pose.position.z,
+        feedback.pose.orientation.x, feedback.pose.orientation.y, feedback.pose.orientation.z,
+        feedback.pose.orientation.w};
+    }
+  }
+
+  /**
+   * Publishes a reference mesh object for dense data inspection.
+   * Deletes the old dense reference mesh first.
+   *
+   * @param pose Pose of the marker with orientation as a quaternion
+   * @return None
+   */
+  void pubRefMeshDense(std::array<double, 7> pose)
+  {
+    visualization_msgs::msg::Marker marker = visualization_msgs::msg::Marker();
+    marker.header.frame_id = "world";
+    marker.id = 1;
+    marker.ns = "dense_ref_mesh";
+    marker.action = marker.DELETE;
+    // Delete the old marker first, out of some reason, MODIFY does not work
+    ref_marker_pub_->publish(marker);
+    marker.action = marker.ADD;
+    marker.frame_locked = true;
+    // marker.mesh_use_embedded_materials = true;
+    marker.type = visualization_msgs::msg::Marker::MESH_RESOURCE;
+    marker.mesh_resource = "package://vinspect_ros2/data/camera_1.stl";
+    marker.scale.x = 0.002;
+    marker.scale.y = 0.002;
+    marker.scale.z = 0.002;
+    marker.color.r = 0.0;
+    marker.color.g = 0.0;
+    marker.color.b = 1.0;
+    marker.color.a = 1.0;
+    marker.pose.position.x = pose[0];
+    marker.pose.position.y = pose[1];
+    marker.pose.position.z = pose[2];
+
+    marker.pose.orientation.x = pose[3];
+    marker.pose.orientation.y = pose[4];
+    marker.pose.orientation.z = pose[5];
+    marker.pose.orientation.w = pose[6];
+
+    ref_marker_pub_->publish(marker);
+  }
+
+  /**
+   * Callback for message on "vinspect/dense_data_req"
+   * @param None Currently not used
+   * @return None
+   */
+  // Note: If it stays like this, it could also be a service/client call. Thought we have more
+  // options in the future if this message is used as a settings string or something similar later.
+  void denseDataReq(std_msgs::msg::String)
+  {
+    mtx_.lock();
+    if (inspection_.getDenseDataCount() == 0) {
+      mtx_.unlock();
+      RCLCPP_INFO(this->get_logger(), "No dense data available");
+    } else {
+      RCLCPP_INFO(this->get_logger(), "Asking vinspect for images");
+      int id_to_get = inspection_.getClosestDenseMeasurement(dense_interactive_marker_pose_);
+      auto image = inspection_.getImageFromId(id_to_get);
+      auto pose = inspection_.getDensePoseFromId(id_to_get);
+      pubRefMeshDense(inspection_.eulerToQuatPose(pose));
+      auto msg = vectorToImageMsg(image);
+      dense_image_pub_->publish(msg);
+      RCLCPP_INFO(this->get_logger(), "Published image");
+      mtx_.unlock();
+    }
+  }
+
   double roundValue(double value)
   {
     if (round_to_decimals_ < 0) {
@@ -512,6 +675,42 @@ private:
       // round to number of decimals after the decimal point
       return round(value * pow(10, round_to_decimals_)) / pow(10, round_to_decimals_);
     }
+  }
+
+  void multiDenseDataReq(std_msgs::msg::Int32 msg)
+  {
+    std::vector<std::array<double, 6>> poses = inspection_.getMultiDensePoses(msg.data);
+    
+    visualization_msgs::msg::MarkerArray markerArr = visualization_msgs::msg::MarkerArray();
+    for (size_t i = 0; i < poses.size(); i++)
+    {
+      std::array<double, 7> quat_pose = inspection_.eulerToQuatPose(poses[i]);
+      visualization_msgs::msg::Marker marker = visualization_msgs::msg::Marker();
+      marker.header.frame_id = "world";
+      marker.type = visualization_msgs::msg::Marker::ARROW;
+      marker.id = i;
+      marker.ns = "allDensePoses";
+      marker.action = marker.ADD;
+      marker.frame_locked = true;
+
+      marker.pose.position.x = quat_pose[0];
+      marker.pose.position.y = quat_pose[1];
+      marker.pose.position.z = quat_pose[2];
+      marker.pose.orientation.x = quat_pose[3];
+      marker.pose.orientation.y = quat_pose[4]; 
+      marker.pose.orientation.z = quat_pose[5];
+      marker.pose.orientation.w = quat_pose[6];
+      marker.scale.x = 0.05;
+      marker.scale.y = 0.005;
+      marker.scale.z = 0.005;
+      marker.color.r = 1.0;
+      marker.color.g = 0.0;
+      marker.color.b = 0.0;
+      marker.color.a = 1.0;
+      markerArr.markers.push_back(marker);
+    }
+    multi_dense_poses_pub_->publish(markerArr);
+    RCLCPP_INFO(this->get_logger(), "Showing: requested available poses.");
   }
 
   /**
@@ -619,47 +818,83 @@ private:
         return;
       }
 
-      geometry_msgs::msg::TransformStamped transformed_pose;
+      geometry_msgs::msg::TransformStamped transformed_pose_optical;
+      geometry_msgs::msg::TransformStamped transformed_pose_world;
       try {
-        transformed_pose = tf_buffer_->lookupTransform(
+        transformed_pose_optical = tf_buffer_->lookupTransform(
           color_image_msg->header.frame_id, frame_id_, color_image_msg->header.stamp);
+
+        /* Note: It is expected that an equivalent non-optical frame exists
+        to the optical frame in which the image is published. */
+        std::string non_optical_frame = removeWordFromString(
+          color_image_msg->header.frame_id,
+          "_optical");
+        assert(!non_optical_frame.empty());
+        transformed_pose_world = tf_buffer_->lookupTransform(
+          frame_id_, non_optical_frame, color_image_msg->header.stamp);
       } catch (tf2::TransformException & e) {
         RCLCPP_ERROR(this->get_logger(), "Failed to get transform: %s", e.what());
         return;
       }
 
-      // todo check quaternion ordering
-      tf2::Quaternion quat = tf2::Quaternion(
-        transformed_pose.transform.rotation.x, transformed_pose.transform.rotation.y,
-        transformed_pose.transform.rotation.z, transformed_pose.transform.rotation.w);
-      tf2::Matrix3x3 mat = tf2::Matrix3x3(quat);
-      Eigen::Matrix4d rgb_pose;
-      // todo refactor this into a helper function
-      // create Transformation matrix
-      rgb_pose(0, 0) = mat[0][0];
-      rgb_pose(0, 1) = mat[0][1];
-      rgb_pose(0, 2) = mat[0][2];
-      rgb_pose(1, 0) = mat[1][0];
-      rgb_pose(1, 1) = mat[1][1];
-      rgb_pose(1, 2) = mat[1][2];
-      rgb_pose(2, 0) = mat[2][0];
-      rgb_pose(2, 1) = mat[2][1];
-      rgb_pose(2, 2) = mat[2][2];
-      rgb_pose(0, 3) = transformed_pose.transform.translation.x;
-      rgb_pose(1, 3) = transformed_pose.transform.translation.y;
-      rgb_pose(2, 3) = transformed_pose.transform.translation.z;
-      rgb_pose(3, 0) = 0;
-      rgb_pose(3, 1) = 0;
-      rgb_pose(3, 2) = 0;
-      rgb_pose(3, 3) = 1;
+      Eigen::Matrix4d rgb_pose_tsdf = transformStampedToTransformMatix(transformed_pose_optical);
+      Eigen::Matrix4d rgb_pose_world = transformStampedToTransformMatix(transformed_pose_world);
 
       std::shared_ptr<open3d::geometry::RGBDImage> rgbd =
         open3d::geometry::RGBDImage::CreateFromColorAndDepth(
         o3d_color_img, o3d_depth_img, depth_scale_, depth_trunc_, false);
       // open3d::visualization::DrawGeometries({rgbd});
       //  todo sensor id should not be hardcoded to 0
-      inspection_.integrateImage(*rgbd.get(), 0, rgb_pose);
+      inspection_.integrateImage(*rgbd.get(), 0, rgb_pose_tsdf, rgb_pose_world);
     }
+  }
+
+  std::string removeWordFromString(const std::string str, const std::string word)
+  {
+    std::string to_remove = word;
+    std::string remove_from = str;
+    std::string result;
+    auto n = remove_from.find(to_remove);
+    if (n != std::string::npos) {
+      result = remove_from.erase(n, to_remove.length());
+    }
+    return result;
+  }
+
+  /**
+   * Converts from transformStamped message to Eigen::Matrix4d transform matrix.
+   * @param transformed_pose transformStamped message
+   * @return transform matrix as Eigen::Matrix4d
+   */
+  Eigen::Matrix4d transformStampedToTransformMatix(
+    const geometry_msgs::msg::TransformStamped transformed_pose)
+  {
+    tf2::Quaternion quat = tf2::Quaternion(
+      transformed_pose.transform.rotation.x, transformed_pose.transform.rotation.y,
+      transformed_pose.transform.rotation.z, transformed_pose.transform.rotation.w);
+    tf2::Matrix3x3 mat = tf2::Matrix3x3(quat);
+
+    Eigen::Matrix4d transform_m;
+
+    // create Transformation matrix
+    transform_m(0, 0) = mat[0][0];
+    transform_m(0, 1) = mat[0][1];
+    transform_m(0, 2) = mat[0][2];
+    transform_m(1, 0) = mat[1][0];
+    transform_m(1, 1) = mat[1][1];
+    transform_m(1, 2) = mat[1][2];
+    transform_m(2, 0) = mat[2][0];
+    transform_m(2, 1) = mat[2][1];
+    transform_m(2, 2) = mat[2][2];
+    transform_m(0, 3) = transformed_pose.transform.translation.x;
+    transform_m(1, 3) = transformed_pose.transform.translation.y;
+    transform_m(2, 3) = transformed_pose.transform.translation.z;
+    transform_m(3, 0) = 0;
+    transform_m(3, 1) = 0;
+    transform_m(3, 2) = 0;
+    transform_m(3, 3) = 1;
+
+    return transform_m;
   }
 
   void startReconstruction(
@@ -692,8 +927,10 @@ private:
   bool record_joints_;
   open3d::geometry::TriangleMesh mesh_;
   std::string current_ref_mesh_;
-  std::array<double, 3> inspection_space_min_;
-  std::array<double, 3> inspection_space_max_;
+  std::array<double, 3> inspection_space_3d_min_;
+  std::array<double, 3> inspection_space_3d_max_;
+  std::array<double, 6> inspection_space_6d_min_;
+  std::array<double, 6> inspection_space_6d_max_;
   int round_to_decimals_;
 
   std::string old_object_;
@@ -715,6 +952,8 @@ private:
   double depth_scale_;
   double depth_trunc_;
 
+  std::array<double, 7> dense_interactive_marker_pose_;
+
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
 
@@ -723,6 +962,8 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr dense_mesh_pub_;
   rclcpp::Publisher<vinspect_msgs::msg::AreaData>::SharedPtr display_data_pub_;
   rclcpp::Publisher<vinspect_msgs::msg::Status>::SharedPtr status_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr dense_image_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr multi_dense_poses_pub_;
 
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_states_sub_;
   rclcpp::Subscription<vinspect_msgs::msg::Sparse>::SharedPtr sparse_sub_;
@@ -733,6 +974,8 @@ private:
   rclcpp::Subscription<vinspect_msgs::msg::Settings>::SharedPtr vis_params_sub_;
   rclcpp::Subscription<visualization_msgs::msg::InteractiveMarkerFeedback>::SharedPtr
     selection_marker_sub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr dense_req_sub;
+  rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr multi_dense_req_sub;
 
   rclcpp::Service<vinspect_msgs::srv::StartReconstruction>::SharedPtr start_reconstruction_service_;
   rclcpp::Service<std_srvs::srv::Empty>::SharedPtr stop_reconstruction_service_;
