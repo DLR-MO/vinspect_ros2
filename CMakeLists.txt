@@ -14,6 +14,7 @@ set(ROS2_DEPS
   cv_bridge
   message_filters
   rclcpp
+  rclcpp_components
   sensor_msgs
   std_msgs
   std_srvs
@@ -29,13 +30,34 @@ endforeach()
 
 add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused)
 
+include_directories(include)
 set(SOURCES src/node.cpp)
 
-add_executable(node src/node.cpp)
-target_link_libraries(node PUBLIC TBB::tbb)
+add_library(vinspect_composable_node src/node.cpp)
+target_link_libraries(vinspect_composable_node PUBLIC TBB::tbb rclcpp_components::component)
+ament_target_dependencies(vinspect_composable_node PUBLIC ${ROS2_DEPS} Open3D vinspect)
+rclcpp_components_register_node(
+    vinspect_composable_node
+    PLUGIN "VinspectNode"
+    EXECUTABLE composable_node
+)
+ament_export_targets(composable_node_component)
+
+add_executable(node src/exec.cpp)
+target_link_libraries(node PUBLIC vinspect_composable_node TBB::tbb)
 ament_target_dependencies(node PUBLIC ${ROS2_DEPS} Open3D vinspect)
 target_include_directories(node PUBLIC vinspect)
 
+install(
+  DIRECTORY include/
+  DESTINATION include
+)
+install(TARGETS vinspect_composable_node
+        EXPORT composable_node_component
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION bin
+)
 install(TARGETS node DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS scripts/dummy_publisher.py scripts/selection_marker.py scripts/pose_marker.py scripts/load_and_publish.py DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY demo/launch DESTINATION share/${PROJECT_NAME})
