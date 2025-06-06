@@ -40,6 +40,7 @@ The `RGB-D` messages are only recorded after calling the `/vinspect/start_recons
 to prevent recording images before the camera is at the correct position.
 This service can also be called with the Vinspect settings RViz2 plugin.
 It is possible to use multiple cameras at the same time.
+It is not possible to directly subsribe to compressed image topics because the synchronization between color and depth images does not support the special image transport. Hoewever, you can use the republisher (from the `image_transport` package) node that listens to the compressed image and publishes the uncompressed one. In this case, it is adviced to put this node together with the vinspect component node in one container, so that both nodes run in the same process and can transport the image via shared memory.
 
 ### Visualization
 The visualization is integrated into RViz2.
