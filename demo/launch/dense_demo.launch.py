@@ -19,23 +19,23 @@ def generate_launch_description():
         parameters=[
             {
                 'frame_id': 'world',
-                'sensor_types': ['RGB'],
+                'sensor_types': ['RGBD'],
                 'rgbd_color_topics': [
-                    '/camera/color/image_rect_raw',
+                    '/raw/left/image',
                 ],
                 'rgbd_depth_topics': [
-                    '/camera/depth/image_rect_raw',
+                    '/depth/image',
                 ],
                 'rgbd_info_topics': [
-                    '/camera/color/camera_info',
+                    '/raw/left/camera_info',
                 ],
-                'use_sim_time': True,
-                'inspection_space_3d_min': [-2.5, -2.0, -2.0],
-                'inspection_space_3d_max': [-1.5, 2.0, 2.0],
+                'use_sim_time': False,
+                'inspection_space_3d_min': [-1.0, -1.0, -1.0],
+                'inspection_space_3d_max': [1.0, 1.0, 1.0],
                 'inspection_space_6d_min': [-100.0, -100.0, -100.0, -20.0, -20.0, -20.0],
                 'inspection_space_6d_max': [100.0, 100.0, 100.0, 20, 20, 20],
-                'save_path': '/tmp/demo_dense.vinspect',
-                'dense_senor_resolution': [848.0, 480.0],
+                # 'save_path': '/tmp/demo_dense.vinspect',
+                'dense_senor_resolution': [2472.0, 2064.0],
             }
         ],
     )
