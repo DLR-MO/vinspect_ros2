@@ -5,7 +5,7 @@ from rosbags.typesys import Stores, get_typestore
 import yaml
 import rclpy
 import rclpy.time
-from vinspect.vinspect_py import Inspection
+from vinspect.vinspect_py import Inspection, integrate_image_py
 from geometry_msgs.msg import TransformStamped
 from pathlib import Path
 from tf2_ros import Buffer
@@ -17,6 +17,7 @@ import numpy as np
 from transforms3d.affines import compose
 from transforms3d.quaternions import quat2mat
 from rosbags.image import message_to_cvimage
+from rosbags.image.image import to_cvtype
 
 faulthandler.enable()
 TYPESTORE = get_typestore(Stores.LATEST)
@@ -113,32 +114,63 @@ def read_camera_infos(bag_path, inspection, args):
                                           msg.k[0], msg.k[4], msg.k[2], msg.k[5])
                 break
             sensor_id += 1
+        print('Finished reading camera info messages')
 
 
-def integrate(des_color, des_depth, id, buffer, inspection, args):
-    rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(o3d.cpu.pybind.geometry.Image(message_to_cvimage(des_color)), o3d.cpu.pybind.geometry.Image(
-        message_to_cvimage(des_depth)), depth_scale=DEPTH_SCALE, depth_trunc=DEPTH_TRUNC, convert_rgb_to_intensity=False)
-    # get corresponding pose from tf2
+def get_affine_matrix_from_tf(buffer, frame, stamp):
     try:
-        # TODO check if it makes sense that we use the color msg as frame of reference
-        # print(f'{des_color.header.frame_id}')
-        frame = des_color.header.frame_id
         if args.apply_tf_hack:
             if frame == 'camera2_color_optical_frame':
                 frame = 'camera2_color_optical_frame2'
         trans = buffer.lookup_transform(frame, WORLD_LINK, Time(
-            seconds=des_color.header.stamp.sec, nanoseconds=des_color.header.stamp.nanosec) - Time(nanoseconds=TIME_OFFSET))
+            seconds=stamp.sec, nanoseconds=stamp.nanosec) - Time(nanoseconds=TIME_OFFSET))
     except Exception as e:
         print(e)
         print('Ignored image that could not be transformed')
         return
     # pprint(trans)
     t = trans.transform
-    affine_matrix = compose(np.array([t.translation.x, t.translation.y, t.translation.z]), quat2mat(
+    return compose(np.array([t.translation.x, t.translation.y, t.translation.z]), quat2mat(
         np.array([t.rotation.w, t.rotation.x, t.rotation.y, t.rotation.z])), np.array([1.0, 1.0, 1.0]))
+
+
+def integrate(des_color, des_depth, id, buffer, inspection, args):
+    # rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(o3d.cpu.pybind.geometry.Image(message_to_cvimage(des_color)), o3d.cpu.pybind.geometry.Image(
+    #    message_to_cvimage(des_depth)), depth_scale=DEPTH_SCALE, depth_trunc=DEPTH_TRUNC, convert_rgb_to_intensity=False)
+    # get corresponding optical pose from tf2
+    # TODO check if it makes sense that we use the color msg as frame of reference
+    # print(f'{des_color.header.frame_id}')
+    affine_matrix_optical = get_affine_matrix_from_tf(
+        buffer, des_color.header.frame_id, des_color.header.stamp)
     # pprint(affine_matrix)
     # print('-----------')
-    inspection.integrate_image(rgbd_image, id, affine_matrix)
+    # get the corresponding camera pose (for retrival of camera poses)
+    # TODO use better method to get frames of cameras
+    frame = des_color.header.frame_id[:-20] + '_link'
+    print(frame)
+    affine_matrix_camera = get_affine_matrix_from_tf(
+        buffer, frame, des_color.header.stamp)
+
+    if affine_matrix_optical is not None and affine_matrix_camera is not None:
+        # inspection.integrate_image(rgbd_image, id, affine_matrix_optical, affine_matrix_camera)
+        color_depth, color_fmt, color_typestr, color_nchan = to_cvtype(des_color.encoding)
+        depth_depth, depth_fmt, depth_typestr, depth_nchan = to_cvtype(des_depth.encoding)
+        if color_typestr == 'uint8':
+            color_str = '8U'
+        else:
+            print(
+                f"No method to handle color image of type {color_depth} {color_fmt} {color_typestr} {color_nchan}")
+            exit()
+        if depth_typestr == 'uint16':
+            depth_str = '16U'
+            print(
+                f"Depth type {depth_depth} {depth_fmt} {depth_typestr} {depth_nchan}")
+        else:
+            print(
+                f"No method to handle depth image of type {depth_depth} {depth_fmt} {depth_typestr} {depth_nchan}")
+            exit()
+        integrate_image_py(inspection, message_to_cvimage(des_color), color_str, message_to_cvimage(
+            des_depth), depth_str, DEPTH_SCALE, DEPTH_TRUNC, id, affine_matrix_optical, affine_matrix_camera)
 
 
 def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buffer, args):
@@ -206,8 +238,8 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
 def process_bag(bag_path, args):
     # Create a Vinspect object
     # TODO the sensor types need to be made configurable
-    inspection = Inspection(["RGBD", "RGBD", "RGBD"], inspection_space_min=args.inspection_space_min,
-                            inspection_space_max=args.inspection_space_max)
+    inspection = Inspection(["RGBD", "RGBD", "RGBD"], inspection_space_3d_min=args.inspection_space_min,
+                            inspection_space_3d_max=args.inspection_space_max)
     inspection.reinitialize_TSDF(args.voxel_length, args.sdf_trunc)
     num_cameras = len(args.color_topics)
     if len(args.color_topics) != len(args.depth_topics):
@@ -258,18 +290,20 @@ def process_bag(bag_path, args):
     tf_buffer = read_tf(bag_path, topic_message_numbers, args)
     read_camera_infos(bag_path, inspection, args)
     read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buffer, args)
+    inspection.finish()
 
     # Provide statistics to the user when finished reading the bag
     print("Statistics:")
     print(f'Integrated images {inspection.get_integrated_images_count()}')
     if inspection.get_integrated_images_count() == 0:
         print(f'No mesh could be reconstructed. Please check if the inspection space boundaries are correct.')
-    mesh = inspection.extract_dense_reconstruction()
-    print(mesh)
-    # save the mesh
-    mesh.compute_triangle_normals()
-    o3d.io.write_triangle_mesh("mesh.stl", mesh)
-    o3d.visualization.draw_geometries([mesh])
+    else:
+        mesh_path = '/tmp/extracted_mesh.ply'
+        # save the mesh
+        inspection.save_dense_reconstruction(mesh_path)
+        mesh = o3d.geometry.TriangleMesh()
+        o3d.io.read_triangle_mesh(mesh_path, mesh)
+        o3d.visualization.draw_geometries([mesh])
 
 
 if __name__ == "__main__":
