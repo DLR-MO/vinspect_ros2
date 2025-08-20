@@ -2,10 +2,13 @@ cmake_minimum_required(VERSION 3.5)
 project(vinspect_ros2)
 
 set(CMAKE_CXX_STANDARD 20)
+cmake_policy(SET CMP0074 NEW)
+set(Open3D_ROOT /usr/)
+message(Open3D_INCLUDE_DIRS)
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
-find_package(Open3D REQUIRED)
+find_package(Open3D REQUIRED HINTS /usr/)
 find_package(vinspect REQUIRED)
 find_package(TBB REQUIRED)
 

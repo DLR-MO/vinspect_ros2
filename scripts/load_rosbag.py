@@ -147,7 +147,6 @@ def integrate(des_color, des_depth, id, buffer, inspection, args):
     # get the corresponding camera pose (for retrival of camera poses)
     # TODO use better method to get frames of cameras
     frame = des_color.header.frame_id[:-20] + '_link'
-    print(frame)
     affine_matrix_camera = get_affine_matrix_from_tf(
         buffer, frame, des_color.header.stamp)
 
@@ -163,8 +162,6 @@ def integrate(des_color, des_depth, id, buffer, inspection, args):
             exit()
         if depth_typestr == 'uint16':
             depth_str = '16U'
-            print(
-                f"Depth type {depth_depth} {depth_fmt} {depth_typestr} {depth_nchan}")
         else:
             print(
                 f"No method to handle depth image of type {depth_depth} {depth_fmt} {depth_typestr} {depth_nchan}")
