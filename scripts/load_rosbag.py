@@ -1,3 +1,4 @@
+from datetime import datetime
 import faulthandler
 from rosbags.rosbag2 import Reader
 from rosbags.highlevel import AnyReader
@@ -135,8 +136,6 @@ def get_affine_matrix_from_tf(buffer, frame, stamp):
 
 
 def integrate(des_color, des_depth, id, buffer, inspection, args):
-    # rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(o3d.cpu.pybind.geometry.Image(message_to_cvimage(des_color)), o3d.cpu.pybind.geometry.Image(
-    #    message_to_cvimage(des_depth)), depth_scale=DEPTH_SCALE, depth_trunc=DEPTH_TRUNC, convert_rgb_to_intensity=False)
     # get corresponding optical pose from tf2
     # TODO check if it makes sense that we use the color msg as frame of reference
     # print(f'{des_color.header.frame_id}')
@@ -271,8 +270,8 @@ def process_bag(bag_path, args):
             for topic_data in meta_data['rosbag2_bagfile_information']['topics_with_message_count']:
                 topic_message_numbers[topic_data['topic_metadata']
                                       ['name']] = topic_data['message_count']
-            print(f'Using bag with messages from {reader.start_time/1e9} to {
-                  reader.end_time/1e9} with a duration of {(reader.end_time-reader.start_time)/1e9} s')
+            print(f'Using bag with messages from {datetime.fromtimestamp(reader.start_time/1e9)} to {
+                  datetime.fromtimestamp(reader.end_time/1e9)} with a duration of {(reader.end_time-reader.start_time)/1e9} s')
             pprint(topic_message_numbers)
 
             # Sanity check
@@ -298,8 +297,8 @@ def process_bag(bag_path, args):
         mesh_path = '/tmp/extracted_mesh.ply'
         # save the mesh
         inspection.save_dense_reconstruction(mesh_path)
-        mesh = o3d.geometry.TriangleMesh()
-        o3d.io.read_triangle_mesh(mesh_path, mesh)
+        print(f"Mesh saved to {mesh_path}")
+        mesh = o3d.io.read_triangle_mesh(mesh_path)
         o3d.visualization.draw_geometries([mesh])
 
 
