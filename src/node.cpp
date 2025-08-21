@@ -196,7 +196,8 @@ public:
     } else {
       std::vector<std::string> joint_names = {};                // todo
       inspection_ = vinspect::Inspection(
-        sensor_types, sensor_data_type_names, sensor_data_type_units, joint_names, mesh_, std::make_tuple(
+        sensor_types, sensor_data_type_names, sensor_data_type_units, joint_names, mesh_,
+        std::make_tuple(
           dense_senor_resolution[0],
           dense_senor_resolution[1]),
         save_path_, inspection_space_3d_min_, inspection_space_3d_max_, inspection_space_6d_min_,
@@ -216,7 +217,9 @@ public:
     ref_marker_pub_ =
       this->create_publisher<visualization_msgs::msg::Marker>("ref_mesh", latching_qos);
     dense_image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("dense_image", latching_qos);
-    multi_dense_poses_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("visualization_marker_array", latching_qos);
+    multi_dense_poses_pub_ =
+      this->create_publisher<visualization_msgs::msg::MarkerArray>("visualization_marker_array",
+      latching_qos);
 
     old_object_ = "Null";
     old_transparency_ = -0.1;
@@ -680,10 +683,9 @@ private:
   void multiDenseDataReq(std_msgs::msg::Int32 msg)
   {
     std::vector<std::array<double, 6>> poses = inspection_.getMultiDensePoses(msg.data);
-    
+
     visualization_msgs::msg::MarkerArray markerArr = visualization_msgs::msg::MarkerArray();
-    for (size_t i = 0; i < poses.size(); i++)
-    {
+    for (size_t i = 0; i < poses.size(); i++) {
       std::array<double, 7> quat_pose = inspection_.eulerToQuatPose(poses[i]);
       visualization_msgs::msg::Marker marker = visualization_msgs::msg::Marker();
       marker.header.frame_id = "world";
@@ -697,7 +699,7 @@ private:
       marker.pose.position.y = quat_pose[1];
       marker.pose.position.z = quat_pose[2];
       marker.pose.orientation.x = quat_pose[3];
-      marker.pose.orientation.y = quat_pose[4]; 
+      marker.pose.orientation.y = quat_pose[4];
       marker.pose.orientation.z = quat_pose[5];
       marker.pose.orientation.w = quat_pose[6];
       marker.scale.x = 0.05;
