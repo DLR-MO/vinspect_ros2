@@ -842,12 +842,8 @@ private:
       Eigen::Matrix4d rgb_pose_tsdf = transformStampedToTransformMatix(transformed_pose_optical);
       Eigen::Matrix4d rgb_pose_world = transformStampedToTransformMatix(transformed_pose_world);
 
-      std::shared_ptr<open3d::geometry::RGBDImage> rgbd =
-        open3d::geometry::RGBDImage::CreateFromColorAndDepth(
-        o3d_color_img, o3d_depth_img, depth_scale_, depth_trunc_, false);
-      // open3d::visualization::DrawGeometries({rgbd});
       //  todo sensor id should not be hardcoded to 0
-      inspection_.integrateImage(*rgbd.get(), 0, rgb_pose_tsdf, rgb_pose_world);
+      inspection_.integrateImage(o3d_color_img, o3d_depth_img, 0, rgb_pose_tsdf, rgb_pose_world);
     }
   }
 
