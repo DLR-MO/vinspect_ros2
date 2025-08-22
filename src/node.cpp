@@ -843,7 +843,7 @@ private:
       Eigen::Matrix4d rgb_pose_world = transformStampedToTransformMatix(transformed_pose_world);
 
       //  todo sensor id should not be hardcoded to 0
-      inspection_.integrateImage(o3d_color_img, o3d_depth_img, 0, rgb_pose_tsdf, rgb_pose_world);
+      inspection_.integrateImage(o3d_color_img, o3d_depth_img, depth_scale_, depth_trunc_, 0, rgb_pose_tsdf, rgb_pose_world);
     }
   }
 

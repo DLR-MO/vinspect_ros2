@@ -159,7 +159,11 @@ def integrate(des_color, des_depth, sensor_id, buffer, inspection):
         buffer, des_color.header.frame_id, des_color.header.stamp)
     # get the corresponding camera pose (for retrival of camera poses) by guessing the name
     # TODO use better method to get frames of cameras
-    frame = des_color.header.frame_id[:-20] + '_link'
+    if des_color.header.frame_id[:7] == 'optical':
+        frame = 'ensenso_camera_left_lens_frame'
+    else:
+        frame = des_color.header.frame_id[:-20] + '_link'
+
     affine_matrix_camera = get_affine_matrix_from_tf(buffer, frame, des_color.header.stamp)
 
     if affine_matrix_optical is not None and affine_matrix_camera is not None:
@@ -173,6 +177,8 @@ def integrate(des_color, des_depth, sensor_id, buffer, inspection):
             exit()
         if depth_typestr == 'uint16':
             depth_str = '16U'
+        elif depth_typestr == 'float32':
+            depth_str = '32F'
         else:
             print(f'No method to handle depth image of type {depth_depth} {depth_fmt} \
                   {depth_typestr} {depth_nchan}')
