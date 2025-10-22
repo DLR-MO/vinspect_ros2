@@ -195,7 +195,7 @@ public:
       inspection_ = vinspect::load(save_path_);
     } else {
       std::vector<std::string> joint_names = {};                // todo
-      inspection_ = vinspect::Inspection(
+      inspection_ = std::make_unique<vinspect::Inspection>(
         sensor_types, sensor_data_type_names, sensor_data_type_units, joint_names, mesh_,
         std::make_tuple(
           dense_senor_resolution[0],
@@ -204,9 +204,9 @@ public:
         inspection_space_6d_max_, sparse_min_color_values,
         sparse_max_color_values);
     }
-    inspection_.startSaving();
+    inspection_->startSaving();
 
-    sparse_mesh_ = std::make_shared<vinspect::SparseMesh>(inspection_);
+    sparse_mesh_ = std::make_unique<vinspect::SparseMesh>(*inspection_);
 
     // Don't use default callback group to allow parallel execution of multiple parts
     rclcpp::QoS latching_qos = rclcpp::QoS(1).transient_local();
@@ -359,19 +359,19 @@ public:
   void showCurrentData()
   {
     // only show this if the inspection has sparse data
-    if (inspection_.getSparseUsage()) {
+    if (inspection_->getSparseUsage()) {
       mtx_.lock();
       // update if settings changed or new measurements are available
       // only compute anything if there is someone listening for the mesh
       if (
-        (settings_changed_ || (last_mesh_number_sparse_ != inspection_.getSparseDataCount() &&
-        inspection_.getSparseDataCount() != 0)) &&
+        (settings_changed_ || (last_mesh_number_sparse_ != inspection_->getSparseDataCount() &&
+        inspection_->getSparseDataCount() != 0)) &&
         sparse_mesh_pub_->get_subscription_count() > 0)
       {
         settings_changed_ = false;
         const open3d::geometry::TriangleMesh mesh =
           sparse_mesh_->createMesh(dot_size_, use_custom_color_, mean_min_max_);
-        last_mesh_number_sparse_ = inspection_.getSparseDataCount();
+        last_mesh_number_sparse_ = inspection_->getSparseDataCount();
         mtx_.unlock();
 
         mesh_marker_msg_.points.clear();
@@ -404,13 +404,13 @@ public:
 
   void showStatus()
   {
-    status_msg_.recorded_values = inspection_.getSparseDataCount();
+    status_msg_.recorded_values = inspection_->getSparseDataCount();
     if (paused_) {
       status_msg_.status = "paused";
     } else {
       status_msg_.status = "running";
     }
-    status_msg_.integrated_images = inspection_.getIntegratedImagesCount();
+    status_msg_.integrated_images = inspection_->getIntegratedImagesCount();
     if (dense_pause_) {
       status_msg_.dense_status = "paused";
     } else {
@@ -424,10 +424,10 @@ public:
   {
     // only compute anything if there is someone listening for the mesh
     if (dense_mesh_pub_->get_subscription_count() > 0 &&
-      inspection_.getIntegratedImagesCount() > 0)
+      inspection_->getIntegratedImagesCount() > 0)
     {
       std::shared_ptr<open3d::geometry::TriangleMesh> mesh =
-        inspection_.extractDenseReconstruction();
+        inspection_->extractDenseReconstruction();
       visualization_msgs::msg::Marker mesh_msg = visualization_msgs::msg::Marker();
       mesh_msg.header.stamp = this->get_clock()->now();
       mesh_msg.header.frame_id = frame_id_;
@@ -461,7 +461,7 @@ public:
   void finish()
   {
     mtx_.lock();
-    inspection_.finish();
+    inspection_->finish();
     mtx_.unlock();
   }
 
@@ -509,7 +509,7 @@ private:
           "Alpha channel is not supported. Please set the alpha channel to 1.0");
       }
       mtx_.lock();
-      inspection_.addSparseMeasurement(
+      inspection_->addSparseMeasurement(
         time_in_seconds, sensor_id, position, orientation, values, color);
       mtx_.unlock();
     }
@@ -521,7 +521,7 @@ private:
       std::array<double, 3> point_coords = {
         feedback.pose.position.x, feedback.pose.position.y, feedback.pose.position.z};
       mtx_.lock();
-      if (inspection_.getSparseDataCount() == 0) {
+      if (inspection_->getSparseDataCount() == 0) {
         mtx_.unlock();
         display_data_msg_.in_area = "No measurement";
         display_data_msg_.next_neighbor = "No measurement";
@@ -531,11 +531,11 @@ private:
         display_data_pub_->publish(display_data_msg_);
       } else {
         std::vector<uint64_t> points_in_area =
-          inspection_.getSparseMeasurementsInRadius(point_coords, selection_sphere_radius_);
-        uint64_t closests_point = inspection_.getClosestSparseMeasurement(point_coords);
+          inspection_->getSparseMeasurementsInRadius(point_coords, selection_sphere_radius_);
+        uint64_t closests_point = inspection_->getClosestSparseMeasurement(point_coords);
         std::vector<double> values_in_area =
-          inspection_.getValuesForIds(displayed_value_name_, points_in_area);
-        std::vector<std::string> units = inspection_.getSparseUnits();
+          inspection_->getValuesForIds(displayed_value_name_, points_in_area);
+        std::vector<std::string> units = inspection_->getSparseUnits();
         mtx_.unlock();
 
         double mean_value = 0;
@@ -653,15 +653,15 @@ private:
   void denseDataReq(std_msgs::msg::String)
   {
     mtx_.lock();
-    if (inspection_.getDenseDataCount() == 0) {
+    if (inspection_->getDenseDataCount() == 0) {
       mtx_.unlock();
       RCLCPP_INFO(this->get_logger(), "No dense data available");
     } else {
       RCLCPP_INFO(this->get_logger(), "Asking vinspect for images");
-      int id_to_get = inspection_.getClosestDenseMeasurement(dense_interactive_marker_pose_);
-      auto image = inspection_.getImageFromId(id_to_get);
-      auto pose = inspection_.getDensePoseFromId(id_to_get);
-      pubRefMeshDense(inspection_.eulerToQuatPose(pose));
+      int id_to_get = inspection_->getClosestDenseMeasurement(dense_interactive_marker_pose_);
+      auto image = inspection_->getImageFromId(id_to_get);
+      auto pose = inspection_->getDensePoseFromId(id_to_get);
+      pubRefMeshDense(inspection_->eulerToQuatPose(pose));
       auto msg = vectorToImageMsg(image);
       dense_image_pub_->publish(msg);
       RCLCPP_INFO(this->get_logger(), "Published image");
@@ -682,11 +682,11 @@ private:
 
   void multiDenseDataReq(std_msgs::msg::Int32 msg)
   {
-    std::vector<std::array<double, 6>> poses = inspection_.getMultiDensePoses(msg.data);
+    std::vector<std::array<double, 6>> poses = inspection_->getMultiDensePoses(msg.data);
 
     visualization_msgs::msg::MarkerArray markerArr = visualization_msgs::msg::MarkerArray();
     for (size_t i = 0; i < poses.size(); i++) {
-      std::array<double, 7> quat_pose = inspection_.eulerToQuatPose(poses[i]);
+      std::array<double, 7> quat_pose = inspection_->eulerToQuatPose(poses[i]);
       visualization_msgs::msg::Marker marker = visualization_msgs::msg::Marker();
       marker.header.frame_id = "world";
       marker.type = visualization_msgs::msg::Marker::ARROW;
@@ -775,7 +775,7 @@ private:
     if (msg.clear) {
       paused_ = true;
       mtx_.lock();
-      inspection_.clear();
+      inspection_->clear();
       sparse_mesh_->resetMesh();
       mesh_marker_msg_.points.clear();
       mesh_marker_msg_.colors.clear();
@@ -791,7 +791,7 @@ private:
     //  todo need to differentiate between different cameras
     open3d::camera::PinholeCameraIntrinsic intrinsic = open3d::camera::PinholeCameraIntrinsic(
       msg.width, msg.height, msg.k[0], msg.k[4], msg.k[2], msg.k[5]);
-    inspection_.setIntrinsic(intrinsic, 0);
+    inspection_->setIntrinsic(intrinsic, 0);
   }
 
   void cameraCb(
@@ -847,7 +847,7 @@ private:
         o3d_color_img, o3d_depth_img, depth_scale_, depth_trunc_, false);
       // open3d::visualization::DrawGeometries({rgbd});
       //  todo sensor id should not be hardcoded to 0
-      inspection_.integrateImage(*rgbd.get(), 0, rgb_pose_tsdf, rgb_pose_world);
+      inspection_->integrateImage(*rgbd.get(), 0, rgb_pose_tsdf, rgb_pose_world);
     }
   }
 
@@ -909,7 +909,7 @@ private:
     } else {
       depth_scale_ = request->depth_scale;
       depth_trunc_ = request->depth_trunc;
-      inspection_.reinitializeTSDF(request->voxel_length, request->sdf_trunc);
+      inspection_->reinitializeTSDF(request->voxel_length, request->sdf_trunc);
       dense_pause_ = false;
     }
   }
@@ -922,8 +922,8 @@ private:
     dense_pause_ = true;
   }
 
-  vinspect::Inspection inspection_;
-  std::shared_ptr<vinspect::SparseMesh> sparse_mesh_;
+  std::unique_ptr<vinspect::Inspection> inspection_{nullptr};
+  std::unique_ptr<vinspect::SparseMesh> sparse_mesh_{nullptr};
   std::string save_path_;
   std::string frame_id_;
   bool record_joints_;
