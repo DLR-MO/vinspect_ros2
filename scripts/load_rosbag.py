@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 """Script to load rosbags directly into Vinspect."""
 import faulthandler
 from datetime import datetime
