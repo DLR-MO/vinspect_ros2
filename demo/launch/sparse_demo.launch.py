@@ -29,10 +29,8 @@ def generate_launch_description():
                     'random_demo',
                 ],
                 'sensor_data_type_units': ['no_unit'],
-                'value_to_display': 'random_demo',
+                'sparse_value_to_display': 'random_demo',
                 'round_to_decimals': 2,
-                'sparse_min_color_values': [0.0],
-                'sparse_max_color_values': [1.0],
                 'sparse_topic': 'sparse',
             }
         ],

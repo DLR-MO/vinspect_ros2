@@ -57,29 +57,7 @@ provides three plugins for RViz2:
 
 ### Parameters
 
-### General Parameters
-- `ref_mesh_path` (`string`): The path to the reference mesh file. Can be a normal path or a ROS2 style path(`package://PACKAGE_NAME/FOLDER/FILE.stl`).
-- `frame_id` (`string`): The frame in which the inspection is taking place. Typically `world` or `base_link`.
-- `inspection_space_min` (`float array`): Defines the boundaries of the space in which measurements are recorded. Values are given as a 3D array in meters, e.g. `[-1.0, -1.0, -1.0]`.
-- `inspection_space_max` (`float array`): See parameter before.
-- `sensor_types` (`string list`): List of sensor types that will be used. Needs to be a list of strings being either `"SPARSE"` or `"RGB-D"`.
-- `save_path` (`string`): Path to where the inspection is saved. If not specified, it will not be saved.
-- `load_path` (`string`): If specified, a previously saved inspection will be loaded and any new measurements will be appended to it.
-
-### Sparse Parameters
-- `sensor_data_type_names` (`string list`): Names for the data that is expected in the sparse messages (only as a human identifier).
-- `sensor_data_type_units` (`string list`): Units for the data that is expected in the sparse messages.
-- `value_to_display` (`string`): Which of the values that is transmitted should be shown in the visualization.
-- `round_to_decimals` (`int`): To how many decimal places the values should be rounded (only in the interface, not in the recorded file). Default is `-1` and means no rounding. For example, `2` would round to `0.01`.
-- `sparse_min_color_values` (`float array`): All values below this will be displayed with the lowest color of the color range. This can be a helpful setting if you just want to make the classification between okay and defect values more visible.
-- `sparse_max_color_values` (`float array`): See parameter above.
-- `sparse_topic`: The topic which will be subscribed for the sparse messages.
-  
-### Dense Parameters
-
-- `rgbd_color_topics` (`string list`): The topics with the color images.
-- `rgbd_depth_topics` (`string list`): The topics with the depth images.
-- `rgbd_info_topics` (`string list`): The topics with the camera info messages.
+See [vinspect_parameters.yaml](src/vinspect_parameters.yaml) for the list of parameters including descriptions, valid ranges, etc..
 
 ## Demo
 You can get a better impression on how this package works with the following demos.

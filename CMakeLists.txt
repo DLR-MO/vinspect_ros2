@@ -8,9 +8,10 @@ message(Open3D_INCLUDE_DIRS)
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
+find_package(generate_parameter_library REQUIRED)
 find_package(Open3D REQUIRED HINTS /usr/)
-find_package(vinspect REQUIRED)
 find_package(TBB REQUIRED)
+find_package(vinspect REQUIRED)
 
 set(ROS2_DEPS
   ament_index_cpp
@@ -34,8 +35,13 @@ add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused)
 
 set(SOURCES src/node.cpp)
 
+generate_parameter_library(
+  vinspect_parameters
+  src/vinspect_parameters.yaml
+)
+
 add_executable(node src/node.cpp)
-target_link_libraries(node PUBLIC TBB::tbb)
+target_link_libraries(node PUBLIC TBB::tbb vinspect_parameters)
 ament_target_dependencies(node PUBLIC ${ROS2_DEPS} Open3D vinspect)
 target_include_directories(node PUBLIC vinspect)
 

@@ -306,7 +306,6 @@ def process_bag(bag_path, args):
     tf_buffer = read_tf(bag_path, topic_message_numbers, args)
     read_camera_infos(bag_path, inspection, args)
     read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buffer, args)
-    inspection.finish()
 
     # Provide statistics to the user when finished reading the bag
     print('Statistics:')

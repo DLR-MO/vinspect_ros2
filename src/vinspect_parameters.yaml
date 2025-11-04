@@ -1,0 +1,123 @@
+vinspect:
+  frame_id:
+    type: string
+    read_only: true
+    default_value: "world"
+    description: The frame in which the inspection is taking place. Typically `world` or `base_link`.
+  save_path:
+    type: string
+    read_only: true
+    description: Path to where the inspection is stored or loaded from.
+    validation:
+        not_empty<>: []
+  round_to_decimals:
+    type: int
+    default_value: -1
+    read_only: true
+    description: "Round values to this many decimal places (only in the interface, not in the recorded file). Default is `-1`, which means no rounding."
+    validation:
+        gt_eq<>: [-1]
+  joints_topic:
+    type: string
+    read_only: true
+    default_value: ""
+    description: "Record the joint states during the inspection, if set."
+  ref_mesh_path:
+    type: string
+    read_only: true
+    default_value: ""
+    description: "The path to the reference mesh file. Can be a normal path or a ROS2 style path(`package://PACKAGE_NAME/FOLDER/FILE.stl`)."
+  inspection_space_3d:
+    min:
+      type: double_array
+      read_only: true
+      default_value: [-1.0, -1.0, -1.0]
+      description: "The lower bound of the inspection space."
+      validation:
+        fixed_size<>: 3
+    max:
+      type: double_array
+      read_only: true
+      default_value: [1.0, 1.0, 1.0]
+      description: "The upper bound of the inspection space."
+      validation:
+        fixed_size<>: 3
+  inspection_space_6d:
+    min:
+      type: double_array
+      read_only: true
+      default_value: [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+      description: "The lower bound of the inspection space."
+      validation:
+        fixed_size<>: 6
+    max:
+      type: double_array
+      read_only: true
+      default_value: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # TODO check if bounds make sense for 6d
+      description: "The upper bound of the inspection space."
+      validation:
+        fixed_size<>: 6
+
+  sparse_value_to_display:
+      type: string
+      default_value: ""
+      read_only: true
+      description: "Which of the values that is transmitted should be shown in the visualization."
+  sparse_sensor_names:
+    type: string_array
+    read_only: true
+    description: "List of sensor names for the sparse inspection"
+  __map_sparse_sensor_names:
+    value_names: 
+      type: string_array
+      read_only: true
+      description: "Names of the different values provided by this sensor"
+    value_units: 
+      type: string_array
+      read_only: true
+      description: "Units of the different values provided by this sensor"
+    topic:
+      type: string
+      read_only: true
+      description: "Topic where this data is available"
+      validation:
+        not_empty<>: []
+
+  dense_sensor_names:
+    type: string_array
+    read_only: true
+    description: "List of sensor names for the dense senors (e.g. RGBD)"
+  __map_dense_sensor_names:
+    color_topic:
+      type: string
+      read_only: true
+      description: "Topic for the color image of this sensor"
+      validation:
+        not_empty<>: []
+    depth_topic:
+      type: string
+      read_only: true
+      description: "Topic for the depth map of this sensor"
+      validation:
+        not_empty<>: []
+    camera_info_topic:
+      type: string
+      read_only: true
+      description: "Topic for the camera info of this sensor"
+      validation:
+        not_empty<>: []
+    width:
+      type: int
+      read_only: true
+      description: "Width of the measurement in pixels"
+      validation:
+        gt<>: [0]
+    height:
+      type: int
+      read_only: true
+      description: "Height of the measurement in pixels"
+      validation:
+        gt<>: [0]
+    
+
+  
