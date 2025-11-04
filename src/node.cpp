@@ -138,7 +138,7 @@ class VinspectNode : public rclcpp::Node
         std::string path_in_package;
         std::getline(stream, path_in_package);
         // Combine the package path and the path in the package
-        ref_mesh_path = ament_index_cpp::get_package_share_directory(package_name) + " / " + path_in_package;
+        ref_mesh_path = ament_index_cpp::get_package_share_directory(package_name) + "/" + path_in_package;
       }
 
       inspection_ = std::make_unique<vinspect::Inspection>(
@@ -257,8 +257,8 @@ class VinspectNode : public rclcpp::Node
         auto sensor_params = params_.dense_sensor_names_map.at(name);
 
         // todo maybe we should use  image_transport::SubscriberFilter for more performance?
-        auto& color_sub = color_subs_.emplace_back();
-        auto& depth_sub = depth_subs_.emplace_back();
+        auto& color_sub = color_subs_.emplace_back(std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>());
+        auto& depth_sub = depth_subs_.emplace_back(std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>());
 
         color_sub->subscribe(this, sensor_params.color_topic);
         depth_sub->subscribe(this, sensor_params.depth_topic);
@@ -425,7 +425,9 @@ private:
    */
   void sparseCb(const std::string sensor_name, const vinspect_msgs::msg::Sparse msg)
   {
+    
     if (!paused_) {
+      std::cout << "sparseCb" << std::endl;
       if (msg.header.frame_id != params_.frame_id) {
         RCLCPP_WARN_STREAM(
           this->get_logger(), "Frame id mismatch: " << msg.header.frame_id << " != " << params_.frame_id
@@ -871,22 +873,22 @@ private:
   std::unique_ptr<vinspect::Inspection> inspection_{nullptr};
   std::unique_ptr<vinspect::SparseMesh> sparse_mesh_{nullptr};
 
-  double old_transparency_;
-  uint64_t last_mesh_number_sparse_;
-  double dot_size_;
-  double selection_sphere_radius_;
+  double old_transparency_ = 0;
+  uint64_t last_mesh_number_sparse_ = 0;
+  double dot_size_ = 0;
+  double selection_sphere_radius_ = 0;
   int mean_min_max_;
-  bool use_custom_color_;
-  bool paused_;
-  bool dense_pause_;
-  bool settings_changed_;
+  bool use_custom_color_ = false;
+  bool paused_ = false;
+  bool dense_pause_ = false;
+  bool settings_changed_ = false;
   std::mutex mtx_;
   visualization_msgs::msg::Marker mesh_marker_msg_;
   vinspect_msgs::msg::AreaData display_data_msg_;
   vinspect_msgs::msg::Status status_msg_;
 
-  double depth_scale_;
-  double depth_trunc_;
+  double depth_scale_ = 1;
+  double depth_trunc_ = 0;
 
   std::array<double, 7> dense_interactive_marker_pose_;
 

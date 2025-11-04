@@ -15,23 +15,20 @@ def generate_launch_description():
         executable='node',
         name='vinspect_ros2',
         output='screen',
+        #prefix="gdbserver localhost:3000",
         parameters=[
             {
                 'ref_mesh_path': 'package://vinspect_ros2/data/box.ply',
                 'frame_id': 'world',
-                'inspection_space_3d_min': [-1.0, -1.0, -1.0],
-                'inspection_space_3d_max': [1.0, 1.0, 1.0],
-                'inspection_space_6d_min': [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0],
-                'inspection_space_6d_max': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                'sensor_types': ['SPARSE'],
                 'save_path': '/tmp/demo.vinspect',
-                'sensor_data_type_names': [
-                    'random_demo',
-                ],
-                'sensor_data_type_units': ['no_unit'],
-                'sparse_value_to_display': 'random_demo',
                 'round_to_decimals': 2,
-                'sparse_topic': 'sparse',
+                'sparse_value_to_display': 'random_demo',
+                'sparse_sensor_names': ["0"],
+                '0': {
+                    'value_names': ['random_demo'],
+                    'value_units': ['no_unit'],
+                    'topic': 'sparse'
+                }
             }
         ],
     )

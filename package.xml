@@ -9,17 +9,18 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <depend>backward_ros</depend>
   <depend>cv_bridge</depend>
+  <depend>generate_parameter_library</depend>
   <depend>message_filters</depend>
   <depend>rclcpp</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>tf2_ros</depend>
-  <depend>vinspect</depend>
   <depend>vinspect_msgs</depend>
+  <depend>vinspect</depend>
   <depend>visualization_msgs</depend>
-  <depend>generate_parameter_library</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

@@ -65,6 +65,7 @@ vinspect:
       description: "Which of the values that is transmitted should be shown in the visualization."
   sparse_sensor_names:
     type: string_array
+    default_value: []
     read_only: true
     description: "List of sensor names for the sparse inspection"
   __map_sparse_sensor_names:
@@ -85,6 +86,7 @@ vinspect:
 
   dense_sensor_names:
     type: string_array
+    default_value: []
     read_only: true
     description: "List of sensor names for the dense senors (e.g. RGBD)"
   __map_dense_sensor_names:

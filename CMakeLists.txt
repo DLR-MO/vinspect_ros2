@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.5)
 project(vinspect_ros2)
 
+# Build with release optimizations and debug symbols by default
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE RelWithDebug)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 cmake_policy(SET CMP0074 NEW)
 set(Open3D_ROOT /usr/)
@@ -12,6 +17,7 @@ find_package(generate_parameter_library REQUIRED)
 find_package(Open3D REQUIRED HINTS /usr/)
 find_package(TBB REQUIRED)
 find_package(vinspect REQUIRED)
+find_package(backward_ros REQUIRED)
 
 set(ROS2_DEPS
   ament_index_cpp
