@@ -25,8 +25,6 @@ def generate_launch_description():
                 'round_to_decimals': 2,
                 'dense_sensor_names': ["0"],
                 '0': {
-                    'color_topic': ['random_demo'],
-                    'value_units': ['no_unit'],
                     'color_topic': '/camera/color/image_rect_raw',
                     'depth_topic': '/camera/depth/image_rect_raw',
                     'camera_info_topic': '/camera/color/camera_info',
