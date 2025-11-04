@@ -92,24 +92,6 @@ class VinspectNode : public rclcpp::Node
         params_.joints_topic, 10, std::bind(&VinspectNode::jointCb, this, std::placeholders::_1));
     }
 
-    if (params_.ref_mesh_path.length() > 0) {
-      std::string path = params_.ref_mesh_path;
-      if (path.starts_with("package://")) {
-        // This is a path based on a package in the format
-        // package://package_name/path_inside_package
-        std::string sub_path = path.substr(10);
-        size_t end_index = sub_path.find('/');
-        std::string package_name = sub_path.substr(0, end_index);
-        std::string package_path = ament_index_cpp::get_package_share_directory(package_name);
-        path = package_path + "/" + sub_path.substr(end_index + 1);
-      }
-      if (!open3d::io::ReadTriangleMesh(path, mesh_)) {
-        RCLCPP_ERROR(this->get_logger(), "Error reading reference mesh.");
-      }
-    } else {
-      RCLCPP_INFO(this->get_logger(), "No reference mesh path specified.");
-    }
-
     // Check if file exists
     if (std::filesystem::exists(params_.save_path)) {
       inspection_ = std::make_unique<vinspect::Inspection>(params_.save_path);
@@ -145,10 +127,24 @@ class VinspectNode : public rclcpp::Node
         ); 
       }
 
+      // Resolve mesh path
+      std::string ref_mesh_path = params_.ref_mesh_path;
+      if (ref_mesh_path.starts_with("package://")) {
+        // Create stream and drop the prefix
+        std::stringstream stream(ref_mesh_path.substr(10)); 
+        // Extract the package name
+        std::string package_name;
+        std::getline(stream, package_name, '/');
+        std::string path_in_package;
+        std::getline(stream, path_in_package);
+        // Combine the package path and the path in the package
+        ref_mesh_path = ament_index_cpp::get_package_share_directory(package_name) + " / " + path_in_package;
+      }
+
       inspection_ = std::make_unique<vinspect::Inspection>(
         sparse_sensors,
         dense_sensors,
-        mesh_,
+        ref_mesh_path,
         params_.save_path, 
         vinspect::vec2array<double, 3>(params_.inspection_space_3d.min), 
         vinspect::vec2array<double, 3>(params_.inspection_space_3d.max), 
@@ -874,7 +870,6 @@ private:
 
   std::unique_ptr<vinspect::Inspection> inspection_{nullptr};
   std::unique_ptr<vinspect::SparseMesh> sparse_mesh_{nullptr};
-  open3d::geometry::TriangleMesh mesh_;
 
   double old_transparency_;
   uint64_t last_mesh_number_sparse_;
