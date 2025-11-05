@@ -280,7 +280,7 @@ class VinspectNode : public rclcpp::Node
 
     rclcpp::SubscriptionOptions options6;
     options6.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    selection_marker_sub_ =
+    pose_marker_sub_ =
       this->create_subscription<visualization_msgs::msg::InteractiveMarkerFeedback>(
       "pose_marker/feedback", 10,
       std::bind(&VinspectNode::denseInteractiveMarkerCb, this, std::placeholders::_1), options6);
@@ -898,7 +898,7 @@ private:
   std::vector<rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr> rgbd_info_subs_;
   rclcpp::Subscription<vinspect_msgs::msg::Settings>::SharedPtr vis_params_sub_;
   rclcpp::Subscription<visualization_msgs::msg::InteractiveMarkerFeedback>::SharedPtr
-    selection_marker_sub_;
+    selection_marker_sub_, pose_marker_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr dense_req_sub;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr multi_dense_req_sub;
 
