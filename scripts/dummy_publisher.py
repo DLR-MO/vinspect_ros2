@@ -8,7 +8,6 @@ import random
 
 import rclpy
 from rclpy.duration import Duration
-from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
 from vinspect_msgs.msg import Sparse
@@ -17,8 +16,6 @@ if __name__ == '__main__':
     rclpy.init(args=None)
     node = Node('dummy_publisher')
     publisher = node.create_publisher(Sparse, 'sparse', 10)
-    executor = MultiThreadedExecutor()
-    executor.add_node(node)
     i = 0
     while rclpy.ok():
         msg = Sparse()
