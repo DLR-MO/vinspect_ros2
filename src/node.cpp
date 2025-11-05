@@ -99,22 +99,14 @@ class VinspectNode : public rclcpp::Node
       paused_ = true;
     } else {
       // Create sensor objects
-      std::vector<vinspect::SparseSensor> sparse_sensors;
-      for (const auto& name : params_.sparse_sensor_names)
-      {
-        auto sensor_params = params_.sparse_sensor_names_map.at(name);
-      
-        std::vector<vinspect::ValueInfo> values;
-        for (std::size_t i = 0; i < sensor_params.value_names.size(); ++i) {
-          values.push_back(
-            vinspect::ValueInfo{
-              .name = sensor_params.value_names[i],
-              .unit = sensor_params.value_units[i]
-            }
-          );
-        }
-
-        sparse_sensors.emplace_back(std::stoi(name), values);
+      std::vector<vinspect::SparseValueInfo> sparse_value_infos;      
+      for (std::size_t i = 0; i < params_.sparse.value_names.size(); ++i) {
+        sparse_value_infos.push_back(
+          vinspect::SparseValueInfo{
+            .name = params_.sparse.value_names[i],
+            .unit = params_.sparse.value_units[i]
+          }
+        );
       }
 
       std::vector<vinspect::DenseSensor> dense_sensors;
@@ -142,7 +134,7 @@ class VinspectNode : public rclcpp::Node
       }
 
       inspection_ = std::make_unique<vinspect::Inspection>(
-        sparse_sensors,
+        sparse_value_infos,
         dense_sensors,
         ref_mesh_path,
         params_.save_path, 
@@ -212,17 +204,11 @@ class VinspectNode : public rclcpp::Node
     rclcpp::QoS keep_all_reliable_qos = rclcpp::QoS(1).keep_all().reliable();
 
     // Create sparse subscriptions
-    for (const auto& name : params_.sparse_sensor_names)
-    {
-      auto sensor_params = params_.sparse_sensor_names_map.at(name);
-      sparse_subs_.push_back(this->create_subscription<vinspect_msgs::msg::Sparse>(
-        sensor_params.topic,
-        keep_all_reliable_qos,
-        [this, name](const vinspect_msgs::msg::Sparse msg) {
-          sparseCb(name, msg);
-        },
-        options2));
-    }
+    sparse_sub_ = this->create_subscription<vinspect_msgs::msg::Sparse>(
+      params_.sparse.topic,
+      keep_all_reliable_qos,
+      std::bind(&VinspectNode::sparseCb, this, std::placeholders::_1),
+      options2);
 
     rclcpp::SubscriptionOptions options3;
     options3.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -419,15 +405,13 @@ private:
   }
 
   /**
-   * Callback for sparse topic. Adds incomung data to inspection.
+   * Callback for sparse topic. Adds incoming data to inspection.
    * @param msg Sparse ROS message
    * @return
    */
-  void sparseCb(const std::string sensor_name, const vinspect_msgs::msg::Sparse msg)
+  void sparseCb(const vinspect_msgs::msg::Sparse msg)
   {
-    
     if (!paused_) {
-      std::cout << "sparseCb" << std::endl;
       if (msg.header.frame_id != params_.frame_id) {
         RCLCPP_WARN_STREAM(
           this->get_logger(), "Frame id mismatch: " << msg.header.frame_id << " != " << params_.frame_id
@@ -454,7 +438,7 @@ private:
       }
       mtx_.lock();
       inspection_->addSparseMeasurement(
-        time_in_seconds, 0, position, orientation, values, color); // TODO adapt to string sensor names
+        time_in_seconds, sensor_id, position, orientation, values, color);
       mtx_.unlock();
     }
   }
@@ -478,7 +462,7 @@ private:
           inspection_->getSparseMeasurementsInRadius(point_coords, selection_sphere_radius_);
         uint64_t closests_point = inspection_->getClosestSparseMeasurement(point_coords);
         std::vector<double> values_in_area =
-          inspection_->getSparseValuesForIds(params_.sparse_value_to_display, points_in_area);
+          inspection_->getSparseValuesForIds(params_.sparse.value_to_display, points_in_area);
         std::vector<std::string> units = inspection_->getSparseUnits();
         mtx_.unlock();
 
@@ -907,7 +891,7 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr multi_dense_poses_pub_;
 
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_states_sub_;
-  std::vector<rclcpp::Subscription<vinspect_msgs::msg::Sparse>::SharedPtr> sparse_subs_;
+  rclcpp::Subscription<vinspect_msgs::msg::Sparse>::SharedPtr sparse_sub_;
   std::vector<std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>>> color_subs_;
   std::vector<std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>>> depth_subs_;
   std::vector<std::shared_ptr<message_filters::Synchronizer<approx_policy>>> rgbd_syncs_;

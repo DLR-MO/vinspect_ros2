@@ -58,31 +58,28 @@ vinspect:
       validation:
         fixed_size<>: 6
 
-  sparse_value_to_display:
+  sparse:
+    value_to_display:
+        type: string
+        default_value: ""
+        read_only: true
+        description: "Which of the values that is transmitted should be shown in the visualization."
+
+    value_names:
+      type: string_array
+      default_value: []
+      read_only: true
+      description: "List of sensor names for the sparse inspection"
+    value_units:
+      type: string_array
+      default_value: []
+      read_only: true
+      description: "Units of the different sparse values"
+    topic:
       type: string
       default_value: ""
       read_only: true
-      description: "Which of the values that is transmitted should be shown in the visualization."
-  sparse_sensor_names:
-    type: string_array
-    default_value: []
-    read_only: true
-    description: "List of sensor names for the sparse inspection"
-  __map_sparse_sensor_names:
-    value_names: 
-      type: string_array
-      read_only: true
-      description: "Names of the different values provided by this sensor"
-    value_units: 
-      type: string_array
-      read_only: true
-      description: "Units of the different values provided by this sensor"
-    topic:
-      type: string
-      read_only: true
-      description: "Topic where this data is available"
-      validation:
-        not_empty<>: []
+      description: "Topic where this data is available, leave empty when no sparse sensor is available"
 
   dense_sensor_names:
     type: string_array

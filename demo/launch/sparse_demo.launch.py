@@ -22,12 +22,11 @@ def generate_launch_description():
                 'frame_id': 'world',
                 'save_path': '/tmp/demo.vinspect',
                 'round_to_decimals': 2,
-                'sparse_value_to_display': 'random_demo',
-                'sparse_sensor_names': ["0"],
-                '0': {
-                    'value_names': ['random_demo'],
-                    'value_units': ['no_unit'],
-                    'topic': 'sparse'
+                'sparse': {
+                    'value_to_display': 'random_demo',
+                    'value_names':  ['random_demo'],
+                    'value_units': ['no_unit'],#
+                    'topic': "sparse",
                 }
             }
         ],
