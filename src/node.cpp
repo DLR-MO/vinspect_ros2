@@ -743,20 +743,14 @@ private:
       try {
         //  convert ROS image message to opencv
         if(color_image_msg->encoding != "rgb8" && color_image_msg->encoding != "bgr8") {
-          RCLCPP_ERROR(this->get_logger(), "Unsupported encoding: %s", color_image_msg->encoding);
+          RCLCPP_ERROR(this->get_logger(), "Unsupported encoding: %s", color_image_msg->encoding.c_str());
           return;
         }
         // color needs to be rgb8
         cv_bridge::CvImageConstPtr cv2_color_img =
-          cv_bridge::toCvShare(color_image_msg, std::string("rgb8"));
+          cv_bridge::toCvShare(color_image_msg, "rgb8");
         // we keep depth in the given format to not loose precision
         cv_bridge::CvImageConstPtr cv2_depth_img = cv_bridge::toCvShare(depth_image_msg, "");
-
-        // this helps to debug problems with the received data
-        /*
-          cv::imshow("image", cv2_depth_img->image);
-          int k = cv::waitKey(0);
-        */
         // convert opencv image to open3d image
         // Allocate data buffer
         o3d_color_img.Prepare(color_image_msg->width, color_image_msg->height, 3, 1);
@@ -766,7 +760,7 @@ private:
           o3d_depth_img.Prepare(depth_image_msg->width, depth_image_msg->height, 1, 2);
         } else {
           RCLCPP_ERROR(this->get_logger(), "Unsuported depth encoding: %s",
-            depth_image_msg->encoding);
+            depth_image_msg->encoding.c_str());
           return;
         }
         // copy data from opencv image to open3d image
