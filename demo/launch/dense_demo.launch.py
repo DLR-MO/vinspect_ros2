@@ -19,21 +19,21 @@ def generate_launch_description():
         #prefix="gdbserver localhost:3000",
         parameters=[
             {
-                'use_sim_time': True,
+                'use_sim_time': False,
                 'frame_id': 'world',
                 'save_path': '/tmp/demo_dense.vinspect',
                 'round_to_decimals': 2,
-                'dense_sensor_names': ["0"],
+                'dense_sensor_names': ["0"],  # TODO string or int sensor name...
                 '0': {
-                    'color_topic': '/camera/color/image_rect_raw',
-                    'depth_topic': '/camera/depth/image_rect_raw',
-                    'camera_info_topic': '/camera/color/camera_info',
-                    'width': 848,
-                    'height': 480
+                    'color_topic': '/raw/left/image',
+                    'depth_topic': '/depth/image',
+                    'camera_info_topic': '/raw/left/camera_info',
+                    'width': 2472,
+                    'height': 2064
                 },
                 'inspection_space_3d': {
-                    'min': [-2.5, -2.0, -2.0],
-                    'max': [-1.5, 2.0, 2.0]
+                    'min': [-1.0, -1.0, -1.0],
+                    'max': [-1.5,  1.0,  1.0]
                 },
                 'inspection_space_6d': {
                     'min': [-100.0, -100.0, -100.0, -20.0, -20.0, -20.0],

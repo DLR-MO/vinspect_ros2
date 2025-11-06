@@ -363,6 +363,13 @@ class VinspectNode : public rclcpp::Node
     {
       std::shared_ptr<open3d::geometry::TriangleMesh> mesh =
         inspection_->extractDenseReconstruction();
+
+      if(mesh->triangles_.size() == 0) {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 10000000,
+          "Reconstructed mesh is empty. Check if your depth scale and your inspection space are correct.");
+        return;
+      }
+
       visualization_msgs::msg::Marker mesh_msg = visualization_msgs::msg::Marker();
       mesh_msg.header.stamp = this->get_clock()->now();
       mesh_msg.header.frame_id = params_.frame_id;
@@ -734,16 +741,34 @@ private:
       open3d::geometry::Image o3d_color_img;
       open3d::geometry::Image o3d_depth_img;
       try {
-        // todo check if this could be done with better performance
         //  convert ROS image message to opencv
+        if(color_image_msg->encoding != "rgb8" && color_image_msg->encoding != "bgr8") {
+          RCLCPP_ERROR(this->get_logger(), "Unsupported encoding: %s", color_image_msg->encoding);
+          return;
+        }
+        // color needs to be rgb8
         cv_bridge::CvImageConstPtr cv2_color_img =
-          cv_bridge::toCvShare(color_image_msg, color_image_msg->encoding);
-        cv_bridge::CvImageConstPtr cv2_depth_img =
-          cv_bridge::toCvShare(depth_image_msg, std::string("16UC1"));
+          cv_bridge::toCvShare(color_image_msg, std::string("rgb8"));
+        // we keep depth in the given format to not loose precision
+        cv_bridge::CvImageConstPtr cv2_depth_img = cv_bridge::toCvShare(depth_image_msg, "");
+
+        // this helps to debug problems with the received data
+        /*
+          cv::imshow("image", cv2_depth_img->image);
+          int k = cv::waitKey(0);
+        */
         // convert opencv image to open3d image
         // Allocate data buffer
         o3d_color_img.Prepare(color_image_msg->width, color_image_msg->height, 3, 1);
-        o3d_depth_img.Prepare(depth_image_msg->width, depth_image_msg->height, 1, 2);
+        if(depth_image_msg->encoding == "32FC1") {
+          o3d_depth_img.Prepare(depth_image_msg->width, depth_image_msg->height, 1, 4);
+        } else if(depth_image_msg->encoding == "16UC1") {
+          o3d_depth_img.Prepare(depth_image_msg->width, depth_image_msg->height, 1, 2);
+        } else {
+          RCLCPP_ERROR(this->get_logger(), "Unsuported depth encoding: %s",
+            depth_image_msg->encoding);
+          return;
+        }
         // copy data from opencv image to open3d image
         memcpy(o3d_depth_img.data_.data(), cv2_depth_img->image.data, o3d_depth_img.data_.size());
         memcpy(o3d_color_img.data_.data(), cv2_color_img->image.data, o3d_color_img.data_.size());
@@ -756,16 +781,14 @@ private:
       geometry_msgs::msg::TransformStamped transformed_pose_world;
       try {
         transformed_pose_optical = tf_buffer_->lookupTransform(
-          color_image_msg->header.frame_id, params_.frame_id, color_image_msg->header.stamp);
+          color_image_msg->header.frame_id, params_.frame_id, color_image_msg->header.stamp, 100ms);
 
         /* Note: It is expected that an equivalent non-optical frame exists
         to the optical frame in which the image is published. */
-        std::string non_optical_frame = removeWordFromString(
-          color_image_msg->header.frame_id,
-          "_optical");
+        std::string non_optical_frame = "ensenso_camera_left_lens_frame";  // todo make this a parameter
         assert(!non_optical_frame.empty());
         transformed_pose_world = tf_buffer_->lookupTransform(
-          params_.frame_id, non_optical_frame, color_image_msg->header.stamp);
+          params_.frame_id, non_optical_frame, color_image_msg->header.stamp, 100ms);
       } catch (tf2::TransformException & e) {
         RCLCPP_ERROR(this->get_logger(), "Failed to get transform: %s", e.what());
         return;
