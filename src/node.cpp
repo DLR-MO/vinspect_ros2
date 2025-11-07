@@ -25,8 +25,9 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_msgs/msg/color_rgba.hpp>
-#include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/empty.hpp>
 #include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/empty.hpp>
 #include <visualization_msgs/msg/interactive_marker_feedback.hpp>
 #include <visualization_msgs/msg/marker.hpp>
@@ -115,7 +116,8 @@ class VinspectNode : public rclcpp::Node
         dense_sensors.emplace_back(
           std::stoi(name),
           sensor_params.width,
-          sensor_params.height
+          sensor_params.height,
+          sensor_params.depth_scale
         ); 
       }
 
@@ -204,15 +206,17 @@ class VinspectNode : public rclcpp::Node
     rclcpp::QoS keep_all_reliable_qos = rclcpp::QoS(1).keep_all().reliable();
 
     // Create sparse subscriptions
-    sparse_sub_ = this->create_subscription<vinspect_msgs::msg::Sparse>(
-      params_.sparse.topic,
-      keep_all_reliable_qos,
-      std::bind(&VinspectNode::sparseCb, this, std::placeholders::_1),
-      options2);
+    if (inspection_->getSparseUsage()) {
+      sparse_sub_ = this->create_subscription<vinspect_msgs::msg::Sparse>(
+        params_.sparse.topic,
+        keep_all_reliable_qos,
+        std::bind(&VinspectNode::sparseCb, this, std::placeholders::_1),
+        options2);
+    }
 
     rclcpp::SubscriptionOptions options3;
     options3.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    dense_req_sub = this->create_subscription<std_msgs::msg::String>(
+    dense_req_sub = this->create_subscription<std_msgs::msg::Empty>(
       "vinspect/dense_data_req", latching_qos,
       std::bind(&VinspectNode::denseDataReq, this, std::placeholders::_1), options3);
 
@@ -222,12 +226,7 @@ class VinspectNode : public rclcpp::Node
       "vinspect/multi_dense_data_req", latching_qos,
       std::bind(&VinspectNode::multiDenseDataReq, this, std::placeholders::_1), options4);
 
-    // todo should be true at the beginning and started with service call
-    dense_pause_ = true;
     if (inspection_->getDenseUsage()) {
-      // todo could be parameter, is currently updated by service
-      depth_scale_ = 1000.0;
-      depth_trunc_ = 3.0;
       tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
       tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
       start_reconstruction_service_ = this->create_service<vinspect_msgs::srv::StartReconstruction>(
@@ -250,7 +249,7 @@ class VinspectNode : public rclcpp::Node
         depth_sub->subscribe(this, sensor_params.depth_topic);
 
         // todo maybe we need a common mutial exclusive callback group for these, as they all
-        // acces the TSDF. or non exclusive groups?  No, because the events executor is single threaded
+        // access the TSDF. or non exclusive groups?  No, because the events executor is single threaded
         // todo specify qos and options as further arguments
         std::shared_ptr<message_filters::Synchronizer<approx_policy>> rgbd_sync =
           std::make_shared<message_filters::Synchronizer<approx_policy>>(
@@ -498,35 +497,6 @@ private:
   }
 
   /**
-   * Orders the image from a std::vector<std::vector<std::array<u_int8_t,3>>>
-   * To sensor_msgs::msg::Image type.
-   * @param image in as vector
-   * @return image as sensor_msgs::msg::Image
-   */
-  sensor_msgs::msg::Image vectorToImageMsg(
-    const std::vector<std::vector<std::array<u_int8_t,
-    3>>> & image)
-  {
-    sensor_msgs::msg::Image msg;
-    msg.height = image.size();
-    msg.width = image[1].size();
-
-    msg.encoding = "rgb8";
-
-    msg.step = msg.width * 3;
-
-    msg.data.resize(msg.height * msg.step);
-    for (size_t i = 0; i < msg.height; i++) {
-      for (size_t j = 0; j < msg.width; j++) {
-        size_t index = (i * msg.width + j) * 3;
-        msg.data[index + 0] = image[i][j][0];
-        msg.data[index + 1] = image[i][j][1];
-        msg.data[index + 2] = image[i][j][2];
-      }
-    }
-    return msg;
-  }
-  /**
    * Callback for the denseInteractiveMarker. Used to set the current pose.
    * @param feedback InteractiveMarkerFeedback message
    * @return None
@@ -588,7 +558,7 @@ private:
    */
   // Note: If it stays like this, it could also be a service/client call. Thought we have more
   // options in the future if this message is used as a settings string or something similar later.
-  void denseDataReq(std_msgs::msg::String)
+  void denseDataReq(std_msgs::msg::Empty)
   {
     mtx_.lock();
     if (inspection_->getDenseDataCount() == 0) {
@@ -600,8 +570,12 @@ private:
       auto image = inspection_->getImageFromId(id_to_get);
       auto pose = inspection_->getDensePoseFromId(id_to_get);
       pubRefMeshDense(vinspect::eulerToQuatPose(pose));
-      auto msg = vectorToImageMsg(image);
-      dense_image_pub_->publish(msg);
+      auto msg = cv_bridge::CvImage(
+        std_msgs::msg::Header(), // We do not have any header information at this point
+        "rgb8",
+        image
+      ).toImageMsg();
+      dense_image_pub_->publish(*msg);
       RCLCPP_INFO(this->get_logger(), "Published image");
       mtx_.unlock();
     }
@@ -738,34 +712,17 @@ private:
     const std::string sensor_name
   ) {
     if (!dense_pause_) {
-      open3d::geometry::Image o3d_color_img;
-      open3d::geometry::Image o3d_depth_img;
+      // color needs to be rgb8
+      if(color_image_msg->encoding != "rgb8" && color_image_msg->encoding != "bgr8") {
+        RCLCPP_ERROR(this->get_logger(), "Unsupported encoding: %s", color_image_msg->encoding.c_str());
+        return;
+      }
+      //  Convert ROS image message to OpenCV
+      cv_bridge::CvImageConstPtr cv2_color_img, cv2_depth_img;
       try {
-        //  convert ROS image message to opencv
-        if(color_image_msg->encoding != "rgb8" && color_image_msg->encoding != "bgr8") {
-          RCLCPP_ERROR(this->get_logger(), "Unsupported encoding: %s", color_image_msg->encoding.c_str());
-          return;
-        }
-        // color needs to be rgb8
-        cv_bridge::CvImageConstPtr cv2_color_img =
-          cv_bridge::toCvShare(color_image_msg, "rgb8");
+        cv2_color_img = cv_bridge::toCvShare(color_image_msg, "rgb8");
         // we keep depth in the given format to not loose precision
-        cv_bridge::CvImageConstPtr cv2_depth_img = cv_bridge::toCvShare(depth_image_msg, "");
-        // convert opencv image to open3d image
-        // Allocate data buffer
-        o3d_color_img.Prepare(color_image_msg->width, color_image_msg->height, 3, 1);
-        if(depth_image_msg->encoding == "32FC1") {
-          o3d_depth_img.Prepare(depth_image_msg->width, depth_image_msg->height, 1, 4);
-        } else if(depth_image_msg->encoding == "16UC1") {
-          o3d_depth_img.Prepare(depth_image_msg->width, depth_image_msg->height, 1, 2);
-        } else {
-          RCLCPP_ERROR(this->get_logger(), "Unsuported depth encoding: %s",
-            depth_image_msg->encoding.c_str());
-          return;
-        }
-        // copy data from opencv image to open3d image
-        memcpy(o3d_depth_img.data_.data(), cv2_depth_img->image.data, o3d_depth_img.data_.size());
-        memcpy(o3d_color_img.data_.data(), cv2_color_img->image.data, o3d_color_img.data_.size());
+        cv2_depth_img = cv_bridge::toCvShare(depth_image_msg, "");
       } catch (cv_bridge::Exception & e) {
         RCLCPP_ERROR(this->get_logger(), "Error converting image from ROS to CV");
         return;
@@ -791,12 +748,14 @@ private:
       Eigen::Matrix4d rgb_pose_tsdf = transformStampedToTransformMatix(transformed_pose_optical);
       Eigen::Matrix4d rgb_pose_world = transformStampedToTransformMatix(transformed_pose_world);
 
-      std::shared_ptr<open3d::geometry::RGBDImage> rgbd =
-        open3d::geometry::RGBDImage::CreateFromColorAndDepth(
-        o3d_color_img, o3d_depth_img, depth_scale_, depth_trunc_, false);
-      // open3d::visualization::DrawGeometries({rgbd});
-      //  todo sensor id should not be hardcoded to 0
-      inspection_->addImage(*rgbd.get(), 0, rgb_pose_tsdf, rgb_pose_world);
+
+      inspection_->addImage(
+        cv2_color_img->image,
+        cv2_depth_img->image,
+        depth_trunc_,
+        std::stoi(sensor_name), 
+        rgb_pose_tsdf, 
+        rgb_pose_world);
     }
   }
 
@@ -856,9 +815,8 @@ private:
       response->success = false;
       RCLCPP_ERROR(this->get_logger(), "Reconstruction is already running");
     } else {
-      depth_scale_ = request->depth_scale;
       depth_trunc_ = request->depth_trunc;
-      inspection_->reinitializeTSDF(request->voxel_length, request->sdf_trunc);
+      inspection_->reinitializeTSDF(request->voxel_length);
       dense_pause_ = false;
     }
   }
@@ -881,15 +839,14 @@ private:
   int mean_min_max_;
   bool use_custom_color_ = false;
   bool paused_ = false;
-  bool dense_pause_ = false;
+  bool dense_pause_ = true;
   bool settings_changed_ = false;
   std::mutex mtx_;
   visualization_msgs::msg::Marker mesh_marker_msg_;
   vinspect_msgs::msg::AreaData display_data_msg_;
   vinspect_msgs::msg::Status status_msg_;
 
-  double depth_scale_ = 1;
-  double depth_trunc_ = 0;
+  double depth_trunc_ = 3.0;
 
   std::array<double, 7> dense_interactive_marker_pose_;
 
@@ -916,7 +873,7 @@ private:
   rclcpp::Subscription<vinspect_msgs::msg::Settings>::SharedPtr vis_params_sub_;
   rclcpp::Subscription<visualization_msgs::msg::InteractiveMarkerFeedback>::SharedPtr
     selection_marker_sub_, pose_marker_sub_;
-  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr dense_req_sub;
+  rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr dense_req_sub;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr multi_dense_req_sub;
 
   rclcpp::Service<vinspect_msgs::srv::StartReconstruction>::SharedPtr start_reconstruction_service_;

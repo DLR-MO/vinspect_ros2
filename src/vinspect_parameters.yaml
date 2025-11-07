@@ -117,6 +117,13 @@ vinspect:
       description: "Height of the measurement in pixels"
       validation:
         gt<>: [0]
+    depth_scale:
+      type: double
+      read_only: true
+      description: "Depth scale factor for this sensor"
+      validation:
+        gt<>: [0]
+
     
 
   

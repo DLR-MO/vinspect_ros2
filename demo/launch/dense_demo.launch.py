@@ -29,11 +29,12 @@ def generate_launch_description():
                     'depth_topic': '/depth/image',
                     'camera_info_topic': '/raw/left/camera_info',
                     'width': 2472,
-                    'height': 2064
+                    'height': 2064,
+                    'depth_scale': 1.0
                 },
                 'inspection_space_3d': {
                     'min': [-1.0, -1.0, -1.0],
-                    'max': [-1.5,  1.0,  1.0]
+                    'max': [1.5,  1.0,  1.0]
                 },
                 'inspection_space_6d': {
                     'min': [-100.0, -100.0, -100.0, -20.0, -20.0, -20.0],
