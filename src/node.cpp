@@ -364,7 +364,7 @@ class VinspectNode : public rclcpp::Node
         inspection_->extractDenseReconstruction();
 
       if(mesh->triangles_.size() == 0) {
-        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 10000000,
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
           "Reconstructed mesh is empty. Check if your depth scale and your inspection space are correct.");
         return;
       }
