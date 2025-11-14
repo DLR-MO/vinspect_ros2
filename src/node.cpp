@@ -369,7 +369,7 @@ class VinspectNode : public rclcpp::Node
         return;
       }
 
-      visualization_msgs::msg::Marker mesh_msg = visualization_msgs::msg::Marker();
+      visualization_msgs::msg::Marker mesh_msg;
       mesh_msg.header.stamp = this->get_clock()->now();
       mesh_msg.header.frame_id = params_.frame_id;
       mesh_msg.type = mesh_msg.TRIANGLE_LIST;
@@ -380,6 +380,7 @@ class VinspectNode : public rclcpp::Node
       mesh_msg.scale.y = 1.0;
       mesh_msg.scale.z = 1.0;
       mesh_msg.pose.orientation.w = 1.0;
+
       for (Eigen::Vector3i triangle : mesh->triangles_) {
         for (int vertex_index : triangle) {
           geometry_msgs::msg::Point curr_point = geometry_msgs::msg::Point();
@@ -712,6 +713,10 @@ private:
     const std::string sensor_name
   ) {
     if (!dense_pause_) {
+      // Get sensor specific parameters
+      auto sensor_params = params_.dense_sensor_names_map.at(sensor_name);
+
+
       // color needs to be rgb8
       if(color_image_msg->encoding != "rgb8" && color_image_msg->encoding != "bgr8") {
         RCLCPP_ERROR(this->get_logger(), "Unsupported encoding: %s", color_image_msg->encoding.c_str());
@@ -732,14 +737,12 @@ private:
       geometry_msgs::msg::TransformStamped transformed_pose_world;
       try {
         transformed_pose_optical = tf_buffer_->lookupTransform(
-          color_image_msg->header.frame_id, params_.frame_id, color_image_msg->header.stamp, 100ms);
+          sensor_params.optical_frame_id, params_.frame_id, color_image_msg->header.stamp, 100ms);
 
         /* Note: It is expected that an equivalent non-optical frame exists
         to the optical frame in which the image is published. */
-        std::string non_optical_frame = "ensenso_camera_left_lens_frame";  // todo make this a parameter
-        assert(!non_optical_frame.empty());
         transformed_pose_world = tf_buffer_->lookupTransform(
-          params_.frame_id, non_optical_frame, color_image_msg->header.stamp, 100ms);
+          params_.frame_id, sensor_params.frame_id, color_image_msg->header.stamp, 100ms);
       } catch (tf2::TransformException & e) {
         RCLCPP_ERROR(this->get_logger(), "Failed to get transform: %s", e.what());
         return;

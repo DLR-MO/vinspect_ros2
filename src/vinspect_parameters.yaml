@@ -123,6 +123,19 @@ vinspect:
       description: "Depth scale factor for this sensor"
       validation:
         gt<>: [0]
+    frame_id:
+      type: string
+      read_only: true
+      description: "Frame at which the sensor is located"
+      validation:
+        not_empty<>: []
+    # TODO This can be removed if all setups provide their data according to REP 103
+    optical_frame_id:
+      type: string
+      read_only: true
+      description: "Frame which denotes the optical center of the sensor as defined in REP 103"
+      validation:
+        not_empty<>: []
 
     
 
