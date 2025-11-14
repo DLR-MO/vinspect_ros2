@@ -41,13 +41,7 @@ TYPESTORE = get_typestore(Stores.LATEST)
 TF_TOPIC = '/tf'
 TF_STATIC_TOPIC = '/tf_static'
 
-DEPTH_SCALE = 1000.0
-DEPTH_TRUNC = 0.50  # m
-WORLD_LINK = 'world'
-# this is only for debugging time issues in the messages
-TIME_OFFSET = 0.0  # 0.99*1e9 #ns
-# maximal delta time for color and depth message in seconds
-MAX_TIME_DELTA = 1.0  # seconds   # TODO fix
+DEPTH_TRUNC = 2.0  # m
 
 NATIVE_CLASSES: dict[str, type] = {}
 
@@ -111,19 +105,6 @@ def read_tf(bag_path, topic_message_numbers, args):
             for transform in msg.transforms:
                 buffer.set_transform_static(transform, 'rosbag_reader')
 
-        if args.apply_tf_hack:
-            hack_transform = TransformStamped()
-            hack_transform.header.frame_id = 'camera2_color_optical_frame'
-            hack_transform.child_frame_id = 'camera2_color_optical_frame2'
-            hack_transform.transform.translation.x = 0
-            hack_transform.transform.translation.y = 0
-            hack_transform.transform.translation.z = 0
-            hack_transform.transform.rotation.x = 0
-            hack_transform.transform.rotation.y = 0
-            hack_transform.transform.rotation.z = 1
-            hack_transform.transform.rotation.w = 0
-            buffer.set_transform_static(hack_transform, 'hack_transform')
-
         print('\nReading dynamic TF messages')
         connections = [x for x in reader.connections if x.topic == TF_TOPIC]
         for connection, _, rawdata in tqdm(
@@ -153,14 +134,11 @@ def read_camera_infos(bag_path: str, inspection: Inspection, info_topics: list[s
         print('Finished reading camera info messages')
 
 
-def get_affine_matrix_from_tf(buffer, frame, stamp):
+def get_affine_matrix_from_tf(buffer, frame, stamp, inspection_frame):
     """Compute affinity matrix from tf message."""
     try:
-        if args.apply_tf_hack:
-            if frame == 'camera2_color_optical_frame':
-                frame = 'camera2_color_optical_frame2'
-        trans = buffer.lookup_transform(frame, WORLD_LINK, Time(
-            seconds=stamp.sec, nanoseconds=stamp.nanosec) - Time(nanoseconds=TIME_OFFSET))
+        trans = buffer.lookup_transform(frame, inspection_frame, 
+            Time(seconds=stamp.sec, nanoseconds=stamp.nanosec))
     except Exception as e:
         print(e)
         print('Ignored image that could not be transformed')
@@ -172,17 +150,22 @@ def get_affine_matrix_from_tf(buffer, frame, stamp):
                    np.array([1.0, 1.0, 1.0]))
 
 
-def integrate(des_color, des_depth, sensor_id, buffer, inspection):
+def integrate(des_color, des_depth, sensor_id, buffer, inspection, fixed_frame):
     """Integrate rgbd image into TSDF with corresponding transformation."""
     # get corresponding optical pose from tf2
-    # TODO check if it makes sense that we use the color msg as frame of reference
+    # TODO use a better rosbag with correct camera info...
+    frame="camera1_depth_optical_frame" 
+
     affine_matrix_optical = get_affine_matrix_from_tf(
-        buffer, des_color.header.frame_id, des_color.header.stamp)
+        buffer, frame, des_depth.header.stamp, fixed_frame)
+    
+    if affine_matrix_optical is None:
+        return
+
     # get the corresponding camera pose (for retrival of camera poses) by guessing the name
     # TODO use better method to get frames of cameras
-    frame = "ensenso_camera_left_lens_frame"
     affine_matrix_camera = get_affine_matrix_from_tf(
-        buffer, frame, des_color.header.stamp)
+        buffer, frame, des_depth.header.stamp, fixed_frame)
     
     if affine_matrix_optical is not None and affine_matrix_camera is not None:
         add_image_py(inspection,
@@ -221,9 +204,9 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
                     for idx, depth_image in enumerate(open_depth_images):
                         depth_time = Time.from_msg(depth_image.header.stamp)
                         color_time = Time.from_msg(msg.header.stamp)
-                        if abs((depth_time - color_time).nanoseconds)/1e9 < MAX_TIME_DELTA:
+                        if abs((depth_time - color_time).nanoseconds)/1e9 < args.max_time_delta:
                             integrate(msg, depth_image, sensor_id,
-                                      tf_buffer, inspection)
+                                      tf_buffer, inspection, args.fixed_frame)
                             integrated = True
                             matched_images += 1
                             open_depth_images.pop(idx)
@@ -234,9 +217,9 @@ def read_images(bag_path, inspection, topic_to_id, topic_message_numbers, tf_buf
                     for idx, color_image in enumerate(open_color_images):
                         depth_time = Time.from_msg(msg.header.stamp)
                         color_time = Time.from_msg(color_image.header.stamp)
-                        if abs((depth_time - color_time).nanoseconds)/1e9 < MAX_TIME_DELTA:
+                        if abs((depth_time - color_time).nanoseconds)/1e9 < args.max_time_delta:
                             integrate(color_image, msg, sensor_id,
-                                      tf_buffer, inspection)
+                                      tf_buffer, inspection, args.fixed_frame)
                             integrated = True
                             matched_images += 1
                             open_color_images.pop(idx)
@@ -371,10 +354,10 @@ if __name__ == '__main__':
                         help='Inspection space minimal boundaries as vector x y z in m')
     parser.add_argument('--inspection-space-max', type=float, nargs='+', default=[1.0, 1.0, 1.0],
                         help='Inspection space maximal boundaries as vector x y z in m')
-    parser.add_argument('--read-percentage', type=float, default=100,
-                        help='How much of the rosbag should be read. Useful for quick testing.')
-    parser.add_argument('--apply-tf-hack', action='store_true', default=False,
-                        help='Just a quick hack for a wrong tf')
+    parser.add_argument('--fixed-frame', type=str, default='world',
+                        help='Fixed frame for the inspection space')
+    parser.add_argument('--max-time-delta', type=float, default=0.1,
+                        help='Maximum temporal difference between matched rgb and color images')
     args = parser.parse_args()
     try:
         process_bag(args.bag_path, args)
