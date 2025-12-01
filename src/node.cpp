@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 #include <message_filters/subscriber.h>
-#include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/sync_policies/approximate_epsilon_time.h>
 #include <message_filters/synchronizer.h>
 #include <open3d/Open3D.h>
 #include <tf2_ros/buffer.h>
@@ -47,7 +47,7 @@
 #include <vinspect_ros2/vinspect_parameters.hpp> 
 
 using namespace std::chrono_literals;
-typedef message_filters::sync_policies::ApproximateTime<
+typedef message_filters::sync_policies::ApproximateEpsilonTime<
     sensor_msgs::msg::Image, sensor_msgs::msg::Image>
   approx_policy;
 
@@ -227,8 +227,8 @@ class VinspectNode : public rclcpp::Node
       std::bind(&VinspectNode::multiDenseDataReq, this, std::placeholders::_1), options4);
 
     if (inspection_->getDenseUsage()) {
-      tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-      tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+      tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock(), tf2::durationFromSec(10.0));
+      tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_, true);
       start_reconstruction_service_ = this->create_service<vinspect_msgs::srv::StartReconstruction>(
         "/vinspect/start_reconstruction",
         std::bind(
@@ -252,9 +252,8 @@ class VinspectNode : public rclcpp::Node
         // access the TSDF. or non exclusive groups?  No, because the events executor is single threaded
         // todo specify qos and options as further arguments
         std::shared_ptr<message_filters::Synchronizer<approx_policy>> rgbd_sync =
-          std::make_shared<message_filters::Synchronizer<approx_policy>>(
-          approx_policy(100), *color_sub.get(), *depth_sub.get());
-        rgbd_sync->getPolicy()->setMaxIntervalDuration(rclcpp::Duration::from_seconds(1.0 / 30.0));
+          std::make_shared<message_filters::Synchronizer<approx_policy>>( 
+          approx_policy(10, rclcpp::Duration(1.5s)), *color_sub.get(), *depth_sub.get());
         rgbd_sync->registerCallback(std::bind(&VinspectNode::cameraCb, this, std::placeholders::_1, std::placeholders::_2, name));
         rgbd_syncs_.push_back(rgbd_sync);
 
@@ -703,7 +702,7 @@ private:
     // todo maybe we should provide them at the construction of the inspection object
     //  todo need to differentiate between different cameras
     open3d::camera::PinholeCameraIntrinsic intrinsic = open3d::camera::PinholeCameraIntrinsic(
-      msg.width, msg.height, msg.k[0], msg.k[4], msg.k[2], msg.k[5]);
+      msg.width, msg.height, msg.p[0], msg.p[5], msg.p[2], msg.p[6]);
     inspection_->setIntrinsic(intrinsic, 0); // TODO make sensor id string
   }
 
@@ -722,6 +721,11 @@ private:
         RCLCPP_ERROR(this->get_logger(), "Unsupported encoding: %s", color_image_msg->encoding.c_str());
         return;
       }
+
+
+      // 
+      RCLCPP_ERROR(this->get_logger(), "Got image\n");
+
       //  Convert ROS image message to OpenCV
       cv_bridge::CvImageConstPtr cv2_color_img, cv2_depth_img;
       try {

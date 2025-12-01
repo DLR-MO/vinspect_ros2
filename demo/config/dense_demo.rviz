@@ -15,7 +15,7 @@ Panels:
         - /RobotModel1
         - /InteractiveMarkers1
       Splitter Ratio: 0.5
-    Tree Height: 432
+    Tree Height: 807
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
@@ -71,7 +71,6 @@ Visualization Manager:
       Enabled: true
       Name: Marker
       Namespaces:
-        dense_ref_mesh: true
         ref_mesh: true
       Topic:
         Depth: 5
@@ -121,7 +120,7 @@ Visualization Manager:
         Value: /dense_mesh
       Value: true
     - Class: rviz_default_plugins/Image
-      Enabled: true
+      Enabled: false
       Max Value: 1
       Median window: 5
       Min Value: 0
@@ -133,12 +132,12 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /dense_image
-      Value: true
+      Value: false
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        allDensePoses: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Transient Local
@@ -164,7 +163,7 @@ Visualization Manager:
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
-        base_footprint:
+        base:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -172,202 +171,71 @@ Visualization Manager:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        cabinet_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera1_color_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera1_color_optical_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera1_depth_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera1_depth_optical_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera1_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera2_color_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera2_color_optical_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera2_depth_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera2_depth_optical_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera2_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera3_color_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera3_color_optical_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera3_depth_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera3_depth_optical_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        camera3_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        caster_back_left_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        caster_back_right_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        caster_front_left_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        caster_front_right_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        fit_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        futama2_base_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        led_back_down_front_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        led_back_down_left_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        led_back_down_right_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        led_back_up_front_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        led_back_up_left_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        led_back_up_right_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        lidar_1_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        lidar_2_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        realsense_center_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        realsense_front_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        realsense_tpu_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        ur10ebase:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        ur10ebase_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        ur10ebase_link_inertia:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        ur10eflange:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        ur10eforearm_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        ur10eft_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        ur10eshoulder_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        ur10etool0:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        ur10eupper_arm_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        ur10ewrist_1_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        ur10ewrist_2_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        ur10ewrist_3_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        wheel_back_left_link:
+        base_link_inertia:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        wheel_back_right_link:
+        ensenso_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        ensenso_camera:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        wheel_front_left_link:
+        ensenso_camera_left_lens_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        ensenso_fixture_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        wheel_front_right_link:
+        flange:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        forearm_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        ft_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        shoulder_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        tool0:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        upper_arm_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        world:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        wrist_1_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wrist_2_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wrist_3_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -415,37 +283,37 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 11.210737228393555
+      Distance: 2.3423478603363037
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 2.7303152084350586
-        Y: -2.323251485824585
-        Z: 0.5436356067657471
+        X: -0.1185758113861084
+        Y: 0.2069443315267563
+        Z: 0.08013473451137543
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.2588333487510681
+      Pitch: 0.3588331937789917
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 2.165764093399048
+      Yaw: 1.8457634449005127
     Saved: ~
 Window Geometry:
   Area Panel:
     collapsed: false
   Displays:
     collapsed: false
-  Height: 1014
+  Height: 1043
   Hide Left Dock: false
   Hide Right Dock: false
   Image:
     collapsed: false
-  QMainWindow State: 000000ff00000000fd0000000300000000000001e600000398fc020000000afb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005d00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000005fb000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003f0000023e000000cc00fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb0000000a00560069006500770073000000022f000000cb000000a900fffffffb0000000a0049006d0061006700650100000283000001540000001700ffffff000000010000017b00000398fc0200000006fb0000001c00530065007400740069006e00670073002000500061006e0065006c010000003f0000021a0000001700fffffffc0000025f000001780000013c0100001efa000000000100000002fb00000018005300740061007400750073002000500061006e0065006c0100000000ffffffff0000017b00fffffffb000000140041007200650061002000500061006e0065006c01000006650000010f000000d600fffffffb0000001a0044006900730070006c00610079002000500061006e0065006c000000028e000001460000000000000000fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003b000002b4000000a900fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b2000000000000000000000003000004b00000003efc0100000002fb0000000800540069006d00650000000000000004b00000026f00fffffffb0000000800540069006d00650100000000000004500000000000000000000001c30000039800000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000300000000000001e6000003b5fc020000000afb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005d00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000005fb000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003f000003b5000000cc00fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb0000000a00560069006500770073000000022f000000cb000000a900fffffffb0000000a0049006d00610067006500000002950000015f0000001700ffffff000000010000017b000003b5fc0200000006fb0000001c00530065007400740069006e00670073002000500061006e0065006c010000003f0000022b0000001700fffffffc00000270000001840000013c0100001efa000000000100000002fb00000018005300740061007400750073002000500061006e0065006c0100000000ffffffff0000017b00fffffffb000000140041007200650061002000500061006e0065006c01000006650000010f000000d600fffffffb0000001a0044006900730070006c00610079002000500061006e0065006c000000028e000001460000000000000000fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003b000002b4000000a900fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b2000000000000000000000003000004b00000003efc0100000002fb0000000800540069006d00650000000000000004b00000026f00fffffffb0000000800540069006d0065010000000000000450000000000000000000000413000003b500000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Settings Panel:
@@ -458,6 +326,6 @@ Window Geometry:
     collapsed: false
   Views:
     collapsed: false
-  Width: 1328
-  X: 434
-  Y: 106
+  Width: 1920
+  X: 0
+  Y: 0

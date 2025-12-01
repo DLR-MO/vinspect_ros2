@@ -20,24 +20,24 @@ def generate_launch_description():
         parameters=[
             {
                 'use_sim_time': False,
-                'frame_id': 'world',
+                'frame_id': 'base_link',
                 'save_path': '/tmp/demo_dense.vinspect',
                 'round_to_decimals': 2,
                 # TODO string or int sensor name...
                 'dense_sensor_names': ["0"],
                 '0': {
-                    'color_topic': '/camera/camera1/color/image_rect_raw',
-                    'depth_topic': '/camera/camera1/depth/image_rect_raw/normalized',
-                    'camera_info_topic': '/camera/camera1/color/camera_info',
-                    'width': 640,
-                    'height': 480,
+                    'color_topic': '/rectified/left/image',
+                    'depth_topic': '/depth/image',
+                    'camera_info_topic': '/rectified/left/camera_info',
+                    'width': 2472,
+                    'height': 2064,
                     'depth_scale': 1.0,
-                    'frame_id': 'camera1_link',
+                    'frame_id': 'inspection_camera_frame',
                     'optical_frame_id': 'camera1_depth_optical_frame'
                 },
                 'inspection_space_3d': {
-                    'min': [-5.0, -5.0, -5.0],
-                    'max': [5.0,  5.0,  5.0]
+                    'min': [-1.0, -0.5, 0.0],
+                    'max': [0.0, 1.0, 0.5]
                 },
                 'inspection_space_6d': {
                     'min': [-100.0, -100.0, -100.0, -20.0, -20.0, -20.0],
